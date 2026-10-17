@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS watch_history (
   episode INTEGER,
   vote_average REAL,
   number_of_seasons INTEGER,
+  progress_seconds INTEGER DEFAULT 0,
+  duration_seconds INTEGER DEFAULT 0,
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -74,3 +76,25 @@ CREATE TABLE IF NOT EXISTS user_algorithm_model (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_user_algorithm_model_updated ON user_algorithm_model(updated_at DESC);
+
+-- 5. User Ratings & Letterboxd Imported Seed Matrix
+CREATE TABLE IF NOT EXISTS user_ratings (
+  id TEXT PRIMARY KEY, -- format: {user_id}:{media_type}:{media_id}
+  user_id TEXT NOT NULL,
+  media_id INTEGER NOT NULL,
+  media_type TEXT NOT NULL DEFAULT 'movie',
+  title TEXT NOT NULL,
+  rating REAL, -- Letterboxd scale: 0.5 to 5.0
+  confidence_weight REAL NOT NULL DEFAULT 1.0, -- Confidence weight: 0.5 to 5.0
+  source TEXT NOT NULL DEFAULT 'letterboxd', -- 'letterboxd' | 'manual' | 'stream'
+  poster_path TEXT,
+  backdrop_path TEXT,
+  release_date TEXT,
+  vote_average REAL,
+  genre_ids TEXT, -- JSON array of genre IDs: [28, 12, 878]
+  rated_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_user_ratings_user ON user_ratings(user_id, rated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_ratings_media ON user_ratings(media_id, rating);

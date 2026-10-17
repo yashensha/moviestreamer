@@ -1,5 +1,6 @@
 import { TMDB } from 'tmdb-ts';
-import type { MediaItem, Season, Episode, WatchHistoryItem } from '../types/movie';
+import type { MediaItem, Season, Episode, WatchHistoryItem, UserRatingItem } from '../types/movie';
+import { computeUnifiedInteractionMatrix } from './interactionMatrix';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
@@ -303,64 +304,68 @@ export interface TailoredSuggestionsResult {
 export const fetchTailoredSuggestions = async (
   likedMedia: MediaItem[],
   watchHistory: WatchHistoryItem[],
-  preferredType?: 'movie' | 'tv'
+  preferredType?: 'movie' | 'tv',
+  userRatings?: UserRatingItem[]
 ): Promise<TailoredSuggestionsResult> => {
+  // Compute Unified Interaction Matrix across Letterboxd ratings, in-app hearts, and streaming dwell
+  const matrix = computeUnifiedInteractionMatrix(watchHistory, likedMedia, userRatings);
+
   // If no user signals exist yet
-  if ((!likedMedia || likedMedia.length === 0) && (!watchHistory || watchHistory.length === 0)) {
+  if (matrix.itemCount === 0) {
     return {
       items: [],
-      reason: 'Like titles or start watching to train your personal recommendations in real time.',
+      reason: 'Like titles, rate films, or stream to train your personalized taste matrix in real time.',
       sourceTitles: [],
       topGenres: [],
     };
   }
 
-  // 1. Gather all excluded IDs (already liked or in watch history) so suggestions are fresh
+  // 1. Gather all excluded IDs:
+  // - Already watched or liked items
+  // - Hard-filtered titles (Letterboxd 1★–2★ ratings: 0.0 weight / negative filter)
   const excludedIds = new Set<number>([
     ...(likedMedia || []).map((m) => m.id),
     ...(watchHistory || []).map((w) => w.id),
+    ...(userRatings || []).map((r) => r.id),
+    ...matrix.hardFilteredIds,
   ]);
 
-  // 2. Select up to 3 priority seeds: liked items first, then watch history
-  const seeds: { id: number; type: 'movie' | 'tv'; title: string }[] = [];
+  // 2. Select priority seeds from positiveSeeds (sorted by normalizedWeight: 5.0, 4.0, 3.5...)
+  const seeds: { id: number; type: 'movie' | 'tv'; title: string; weight: number; signal: string }[] = [];
   const seedIds = new Set<number>();
 
-  for (const item of likedMedia || []) {
-    if (!seedIds.has(item.id) && seeds.length < 3) {
-      seeds.push({ id: item.id, type: item.media_type || 'movie', title: item.title });
+  for (const item of matrix.positiveSeeds) {
+    if (!seedIds.has(item.id) && seeds.length < 4) {
+      seeds.push({
+        id: item.id,
+        type: item.type,
+        title: item.title,
+        weight: item.normalizedWeight,
+        signal: item.primarySignal,
+      });
       seedIds.add(item.id);
     }
   }
 
-  for (const item of watchHistory || []) {
-    if (!seedIds.has(item.id) && seeds.length < 3) {
-      seeds.push({ id: item.id, type: item.type || 'movie', title: item.title });
-      seedIds.add(item.id);
-    }
-  }
-
-  // 3. Extract top genres from liked and watched items
-  const genreCounts: Record<number, number> = {};
-  for (const m of likedMedia || []) {
-    if (m.genre_ids) {
-      for (const gid of m.genre_ids) {
-        genreCounts[gid] = (genreCounts[gid] || 0) + 3;
-      }
-    }
-    if (m.genres) {
-      for (const g of m.genres) {
-        genreCounts[g.id] = (genreCounts[g.id] || 0) + 3;
+  // Fallback to any positive interaction if positiveSeeds is small
+  if (seeds.length < 3) {
+    for (const item of matrix.interactions) {
+      if (!item.isHardFiltered && !seedIds.has(item.id) && seeds.length < 3) {
+        seeds.push({
+          id: item.id,
+          type: item.type,
+          title: item.title,
+          weight: item.normalizedWeight,
+          signal: item.primarySignal,
+        });
+        seedIds.add(item.id);
       }
     }
   }
 
-  const sortedGenres = Object.entries(genreCounts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([gid]) => GENRE_MAP[Number(gid)])
-    .filter(Boolean)
-    .slice(0, 3);
+  const topGenreNames = matrix.topGenres.map((g) => g.name);
 
-  // 4. Query TMDB recommendations for all seeds in parallel
+  // 3. Query TMDB recommendations for all seeds in parallel
   const recsPromises = seeds.map((s) => fetchRecommendations(s.id, s.type));
   const recsResults = await Promise.allSettled(recsPromises);
 
@@ -368,10 +373,19 @@ export const fetchTailoredSuggestions = async (
 
   recsResults.forEach((res, index) => {
     if (res.status === 'fulfilled' && Array.isArray(res.value)) {
-      const seedWeight = index === 0 ? 3 : index === 1 ? 2 : 1;
+      const seed = seeds[index];
+      // Seed weight scaled by BM25 normalized affinity
+      const seedWeight = seed ? Math.max(1, Math.min(seed.weight, 5)) : 2;
+
       res.value.forEach((media, rank) => {
+        // Enforce hard-filter exclusion: never recommend movies the user disliked (1-2★)
         if (!excludedIds.has(media.id) && media.poster_path) {
-          const rankScore = (12 - rank) * seedWeight + (media.vote_average || 7.0);
+          // Calculate BM25 genre affinity boost for candidate
+          const genreBoost = (media.genre_ids || []).reduce((acc, gid) => {
+            return acc + (matrix.genreWeights[gid] || 0) * 0.15;
+          }, 0);
+
+          const rankScore = (14 - rank) * seedWeight + (media.vote_average || 7.0) + genreBoost;
           const existing = candidateMap.get(media.id);
           if (existing) {
             existing.score += rankScore;
@@ -392,36 +406,46 @@ export const fetchTailoredSuggestions = async (
     if (matched.length >= 6) {
       candidates = matched;
     } else {
-      // Prioritize matched type at the beginning
       candidates = [...matched, ...candidates.filter((item) => item.media_type !== preferredType)];
     }
   }
 
   const sortedItems = candidates.slice(0, 18);
 
-  // 5. Construct a natural human-friendly reason
+  // 4. Construct a natural human-friendly explanation reflecting the weighted matrix
   let reason = '';
   const sourceTitles = seeds.map((s) => s.title);
 
-  if (likedMedia && likedMedia.length > 0) {
-    if (sourceTitles.length === 1) {
-      reason = `Because you liked "${sourceTitles[0]}"`;
-    } else if (sourceTitles.length >= 2) {
-      reason = `Based on your likes for "${sourceTitles[0]}" and "${sourceTitles[1]}"`;
+  if (seeds.length > 0) {
+    const topSeed = seeds[0];
+    if (topSeed.signal === 'letterboxd_5' || topSeed.signal === 'letterboxd_4') {
+      reason = `Based on your top-rated Letterboxd film "${topSeed.title}"`;
+    } else if (topSeed.signal === 'heart') {
+      reason = `Because you loved "${topSeed.title}"`;
+    } else if (topSeed.signal === 'completed') {
+      reason = `Because you watched "${topSeed.title}"`;
+    } else {
+      reason = `Based on "${topSeed.title}"`;
     }
-  } else if (watchHistory && watchHistory.length > 0) {
-    reason = `Because you watched "${watchHistory[0].title}"`;
+
+    if (seeds.length > 1 && !reason.includes('and')) {
+      reason += ` & "${seeds[1].title}"`;
+    }
   }
 
-  if (sortedGenres.length > 0 && !reason.includes('Based on')) {
-    reason += ` · Tailored to your taste in ${sortedGenres.join(', ')}`;
+  if (topGenreNames.length > 0) {
+    if (reason) {
+      reason += ` · Tailored to your taste in ${topGenreNames.slice(0, 2).join(' & ')}`;
+    } else {
+      reason = `Curated for your top affinities in ${topGenreNames.slice(0, 3).join(', ')}`;
+    }
   }
 
   return {
     items: sortedItems,
-    reason: reason.trim() || 'Curated to match your session viewing taste',
+    reason: reason.trim() || 'Curated by your Unified Taste Matrix',
     sourceTitles,
-    topGenres: sortedGenres,
+    topGenres: topGenreNames,
   };
 };
 

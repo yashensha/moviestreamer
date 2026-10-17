@@ -35,13 +35,13 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       .first<{ id: string; email: string; password_hash: string; name: string }>();
 
     if (!user || !user.password_hash) {
-      return jsonResponse({ error: 'Invalid email or password.' }, 401);
+      return jsonResponse({ error: 'Account not found. Please click "Sign up now" below to create an account.' }, 404);
     }
 
     // 2. Verify password
     const isValid = await verifyPassword(password, user.password_hash);
     if (!isValid) {
-      return jsonResponse({ error: 'Invalid email or password.' }, 401);
+      return jsonResponse({ error: 'Invalid password. Please check your credentials.' }, 401);
     }
 
     const now = Date.now();
@@ -64,7 +64,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       .bind(token, user.id, now, expiresAt)
       .run();
 
-    // 5. Fetch user's saved watch history and likes from D1 to restore their state
+    // 5. Fetch user's saved watch history, likes, and ratings from D1
     const historyResult = await db
       .prepare(
         `SELECT media_id as id, media_type as type, title, overview, poster_path, backdrop_path, release_date, season, episode, vote_average, number_of_seasons, updated_at as updatedAt
@@ -92,6 +92,20 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       genre_ids: row.genre_ids ? JSON.parse(row.genre_ids) : [],
     }));
 
+    const ratingsResult = await db
+      .prepare(
+        `SELECT media_id as id, media_type as type, title, rating, confidence_weight as confidenceWeight,
+                source, poster_path, backdrop_path, release_date, vote_average, genre_ids, rated_at as ratedAt
+         FROM user_ratings WHERE user_id = ?1 ORDER BY rated_at DESC LIMIT 500`
+      )
+      .bind(user.id)
+      .all();
+
+    const ratings = (ratingsResult.results || []).map((row: any) => ({
+      ...row,
+      genre_ids: row.genre_ids ? JSON.parse(row.genre_ids) : [],
+    }));
+
     return jsonResponse({
       success: true,
       token,
@@ -102,6 +116,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       },
       watchHistory: historyResult.results || [],
       likedMedia,
+      ratings,
     });
   } catch (error: any) {
     return jsonResponse({ error: error.message || 'Login failed.' }, 500);

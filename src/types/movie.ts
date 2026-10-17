@@ -68,6 +68,8 @@ export interface SeriesProgress {
   poster_path?: string | null;
   backdrop_path?: string | null;
   release_date?: string;
+  progressSeconds?: number;
+  durationSeconds?: number;
   updatedAt: number;
 }
 
@@ -83,5 +85,31 @@ export interface WatchHistoryItem {
   episode?: number;
   vote_average?: number;
   number_of_seasons?: number;
+  progressSeconds?: number;
+  durationSeconds?: number;
   updatedAt: number;
+}
+
+export interface UserRatingItem {
+  id: number;
+  type: MediaType;
+  title: string;
+  rating?: number; // Letterboxd 0.5 to 5.0 scale
+  confidenceWeight: number; // 0.5 to 5.0 confidence weight for recommendation models
+  source: 'letterboxd' | 'manual' | 'stream';
+  poster_path: string | null;
+  backdrop_path?: string | null;
+  release_date?: string;
+  vote_average?: number;
+  genre_ids?: number[];
+  ratedAt: number;
+}
+
+export interface LetterboxdRawEntry {
+  title: string;
+  year?: number;
+  rating?: number;
+  date?: string;
+  letterboxdUri?: string;
+  isWatchlist?: boolean;
 }

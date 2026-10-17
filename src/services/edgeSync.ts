@@ -35,7 +35,8 @@ let syncTimeout: any = null;
  */
 export const syncToEdge = (
   watchHistory: WatchHistoryItem[],
-  likedMedia: MediaItem[]
+  likedMedia: MediaItem[],
+  userRatings: any[] = []
 ) => {
   if (typeof window === 'undefined') return;
 
@@ -45,12 +46,15 @@ export const syncToEdge = (
 
   syncTimeout = setTimeout(async () => {
     try {
-      const userId = getUserId();
       const token = getAuthToken();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      // Only sync to database when user is authenticated so guest data does not overwrite user DB
+      if (!token) return;
+
+      const userId = getUserId();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      };
 
       await fetch('/api/user/sync', {
         method: 'POST',
@@ -59,12 +63,13 @@ export const syncToEdge = (
           userId,
           watchHistory,
           likedMedia,
+          userRatings,
         }),
       });
     } catch {
-      // Silently ignore in local dev if D1 functions are not being simulated
+      // Silently ignore if offline
     }
-  }, 1200);
+  }, 1000);
 };
 
 /**
@@ -83,7 +88,8 @@ export const fetchEdgeModel = async () => {
       headers,
     });
     if (res.ok) {
-      return await res.json();
+      const text = await res.text();
+      return text ? JSON.parse(text) : null;
     }
   } catch {
     // Silently ignore
@@ -93,19 +99,16 @@ export const fetchEdgeModel = async () => {
 
 /**
  * Initializes auto-synchronization:
- * Listens to Zustand store changes and automatically updates the D1 database on the edge.
+ * Listens to Zustand store changes and automatically updates the database for the active user.
  */
 export const initEdgeSync = () => {
   if (typeof window === 'undefined') return;
 
-  // Initial sync attempt
-  const state = useStreamStore.getState();
-  if (state.watchHistory.length > 0 || state.likedMedia.length > 0) {
-    syncToEdge(state.watchHistory, state.likedMedia);
-  }
-
   // Subscribe to reactive store changes
   useStreamStore.subscribe((state) => {
-    syncToEdge(state.watchHistory, state.likedMedia);
+    const token = getAuthToken();
+    if (token) {
+      syncToEdge(state.watchHistory, state.likedMedia, state.userRatings);
+    }
   });
 };

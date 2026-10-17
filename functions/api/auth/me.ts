@@ -74,6 +74,20 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
       genre_ids: row.genre_ids ? JSON.parse(row.genre_ids) : [],
     }));
 
+    const ratingsResult = await db
+      .prepare(
+        `SELECT media_id as id, media_type as type, title, rating, confidence_weight as confidenceWeight,
+                source, poster_path, backdrop_path, release_date, vote_average, genre_ids, rated_at as ratedAt
+         FROM user_ratings WHERE user_id = ?1 ORDER BY rated_at DESC LIMIT 500`
+      )
+      .bind(user.id)
+      .all();
+
+    const ratings = (ratingsResult.results || []).map((row: any) => ({
+      ...row,
+      genre_ids: row.genre_ids ? JSON.parse(row.genre_ids) : [],
+    }));
+
     return jsonResponse({
       success: true,
       user: {
@@ -83,6 +97,7 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
       },
       watchHistory: historyResult.results || [],
       likedMedia,
+      ratings,
     });
   } catch (error: any) {
     return jsonResponse({ error: error.message || 'Session validation failed.' }, 500);

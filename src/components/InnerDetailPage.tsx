@@ -46,7 +46,7 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
   allMedia,
 }) => {
   const params = useParams<{ id?: string; type?: string }>();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -72,6 +72,7 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
   const [playingEpisode, setPlayingEpisode] = useState(queryEpisode || 1);
   const [viewingSeason, setViewingSeason] = useState(querySeason || 1);
   const [playingEp, setPlayingEp] = useState<Episode | null>(null);
+  const [resumeBadge, setResumeBadge] = useState<{ time: number; visible: boolean } | null>(null);
 
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
@@ -140,6 +141,7 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
   const saveMovieToHistory = useStreamStore((state) => state.saveMovieToHistory);
   const toggleLike = useStreamStore((state) => state.toggleLike);
   const isLiked = useStreamStore((state) => state.isLiked);
+  const getPlaybackProgress = useStreamStore((state) => state.getPlaybackProgress);
 
   // Fetch dynamic TMDB recommendations when media changes
   useEffect(() => {
@@ -226,7 +228,7 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Load media details and check Zustand saved state or query params
+  // Load media details once on mount or when route media changes
   useEffect(() => {
     let isMounted = true;
     if (!resolvedMediaId) return;
@@ -241,12 +243,16 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
         setMedia(details);
 
         if (details.media_type === 'tv') {
+          // Read initial season/episode from URL or Zustand saved progress
+          const urlParams = new URLSearchParams(window.location.search);
+          const initialQSeason = urlParams.get('season') ? parseInt(urlParams.get('season')!, 10) : null;
+          const initialQEpisode = urlParams.get('episode') ? parseInt(urlParams.get('episode')!, 10) : null;
+
           let s = 1;
           let e = 1;
-          // If query params specify season/episode, prioritize them
-          if (querySeason && queryEpisode) {
-            s = querySeason;
-            e = queryEpisode;
+          if (initialQSeason && initialQEpisode) {
+            s = initialQSeason;
+            e = initialQEpisode;
             setAutoResumed(false);
           } else {
             // Check Zustand for previously saved episode
@@ -264,19 +270,32 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
           setPlayingEpisode(e);
           setViewingSeason(s);
 
-          // Only save to Continue Watching if resumed from previously saved progress
-          // or user explicitly arrived with season/episode params (not a fresh unplayed visit)
-          if ((querySeason && queryEpisode) || (s > 1 || e > 1)) {
-            saveSeriesEpisode(details.id, s, e, {
-              title: details.title,
-              overview: details.overview,
-              poster_path: details.poster_path,
-              backdrop_path: details.backdrop_path,
-              release_date: details.release_date,
-              vote_average: details.vote_average,
-              number_of_seasons: details.number_of_seasons,
-            });
+          // Update address bar cleanly with window.history.replaceState without page refresh
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.set('season', String(s));
+            url.searchParams.set('episode', String(e));
+            window.history.replaceState(null, '', url.pathname + url.search);
+          } catch {
+            // Ignore
           }
+
+          // Check if we have saved progress timestamp for this specific episode
+          const savedTime = getPlaybackProgress(details.id, 'tv', s, e);
+          if (savedTime && savedTime > 15) {
+            setResumeBadge({ time: savedTime, visible: true });
+          }
+
+          // Save to Continue Watching
+          saveSeriesEpisode(details.id, s, e, {
+            title: details.title,
+            overview: details.overview,
+            poster_path: details.poster_path,
+            backdrop_path: details.backdrop_path,
+            release_date: details.release_date,
+            vote_average: details.vote_average,
+            number_of_seasons: details.number_of_seasons,
+          });
         } else {
           // Record movie to history
           saveMovieToHistory(details);
@@ -291,7 +310,7 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [resolvedMediaId, resolvedType, querySeason, queryEpisode, getSeriesLastEpisode, saveMovieToHistory, saveSeriesEpisode]);
+  }, [resolvedMediaId, resolvedType]);
 
   // Load episodes when viewingSeason changes for a TV show
   useEffect(() => {
@@ -316,7 +335,7 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
         isMounted = false;
       };
     }
-  }, [media, viewingSeason, playingSeason, playingEpisode]);
+  }, [media?.id, media?.media_type, viewingSeason]);
 
   // Keep playingEp populated if playingSeason is different from viewingSeason
   useEffect(() => {
@@ -332,14 +351,23 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
         isMounted = false;
       };
     }
-  }, [media, playingSeason, playingEpisode, viewingSeason]);
+  }, [media?.id, media?.media_type, playingSeason, playingEpisode, viewingSeason]);
 
-  // Handle explicitly playing an episode -> updates player, Zustand store and URL params!
-  const handleSelectEpisode = (seasonNum: number, episodeNum: number) => {
+  // Handle explicitly playing an episode -> updates player, Zustand store and URL cleanly without refresh!
+  const handleSelectEpisode = (seasonNum: number, episodeNum: number, scroll = false) => {
     setPlayingSeason(seasonNum);
     setPlayingEpisode(episodeNum);
     setViewingSeason(seasonNum);
-    setSearchParams({ season: String(seasonNum), episode: String(episodeNum) });
+
+    // Update URL query parameters cleanly with window.history.replaceState (zero page refresh!)
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('season', String(seasonNum));
+      url.searchParams.set('episode', String(episodeNum));
+      window.history.replaceState(null, '', url.pathname + url.search);
+    } catch {
+      // Ignore
+    }
 
     // Find and update playing episode info
     const epObj = episodes.find((e) => e.episode_number === episodeNum && viewingSeason === seasonNum);
@@ -358,12 +386,80 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
         number_of_seasons: media.number_of_seasons,
       });
     }
-    // Scroll smoothly to player
-    const playerEl = document.getElementById('vidbolt-player-container');
-    if (playerEl) {
-      playerEl.scrollIntoView({ behavior: 'smooth' });
+
+    if (scroll) {
+      const playerEl = document.getElementById('vidbolt-player-container');
+      if (playerEl) {
+        playerEl.scrollIntoView({ behavior: 'smooth' });
+      }
     }
   };
+
+  // Play next episode
+  const handleNextEpisode = () => {
+    if (!media || media.media_type !== 'tv') return;
+
+    // Check if next episode exists in current season
+    const nextEpNum = playingEpisode + 1;
+    const hasNextInSeason = episodes.some((e) => e.episode_number === nextEpNum);
+
+    if (hasNextInSeason) {
+      handleSelectEpisode(playingSeason, nextEpNum, false);
+      return;
+    }
+
+    // Otherwise check next season
+    const totalSeasons = media.number_of_seasons || (media.seasons ? media.seasons.length : 1);
+    if (playingSeason + 1 <= totalSeasons) {
+      handleSelectEpisode(playingSeason + 1, 1, false);
+    }
+  };
+
+  // PostMessage Bridge with VidBolt Player (ended, next_episode)
+  useEffect(() => {
+    if (!media) return;
+
+    const handleMessage = (event: MessageEvent) => {
+      // Security check: only listen to events from vidbolt
+      if (!event.origin || !event.origin.includes('vidbolt')) return;
+
+      const data = event.data;
+      if (!data) return;
+
+      // 1. Playback finished / ended event -> Auto Advance to Next Episode!
+      if (data.type === 'ended' || data.event === 'ended') {
+        if (media.media_type === 'tv') {
+          handleNextEpisode();
+        }
+      }
+
+      // 2. In-player Next Episode button or custom episode picker event
+      if (
+        data.type === 'next_episode' ||
+        data.type === 'next' ||
+        data.event === 'next_episode' ||
+        data.event === 'next'
+      ) {
+        if (media.media_type === 'tv') {
+          handleNextEpisode();
+        }
+      }
+
+      // 3. If player sends specific episode data: { type: 'episode_change', season: 1, episode: 3 }
+      const newSeason = data.season ?? data.season_number;
+      const newEpisode = data.episode ?? data.episode_number;
+      if (typeof newSeason === 'number' && typeof newEpisode === 'number') {
+        if (newSeason !== playingSeason || newEpisode !== playingEpisode) {
+          handleSelectEpisode(newSeason, newEpisode, false);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [media, playingSeason, playingEpisode, episodes]);
 
 
 
@@ -456,23 +552,31 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
               />
 
               {/* Auto Resume Alert if retrieved from Zustand - sleek bottom overlay */}
-              {autoResumed && media.media_type === 'tv' && (
+              {(autoResumed || resumeBadge?.visible) && media.media_type === 'tv' && (
                 <div className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-2.5 bg-black/85 backdrop-blur-md border-t border-rose-900/60 text-xs sm:text-sm">
                   <div className="flex items-center gap-2.5">
                     <Sparkles className="w-4 h-4 text-rose-400 flex-shrink-0" />
                     <span>
                       Resumed from saved progress: <strong className="text-white">Season {playingSeason}, Episode {playingEpisode}</strong>
+                      {resumeBadge?.time ? <span className="text-zinc-400 ml-1.5 font-normal">({Math.floor(resumeBadge.time / 60)}m {resumeBadge.time % 60}s)</span> : null}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => handleSelectEpisode(1, 1)}
+                      onClick={() => {
+                        setAutoResumed(false);
+                        setResumeBadge(null);
+                        handleSelectEpisode(1, 1, false);
+                      }}
                       className="flex items-center gap-1 text-xs text-zinc-400 hover:text-rose-400 underline cursor-pointer"
                     >
                       <RotateCcw className="w-3 h-3" /> Start from S1:E1
                     </button>
                     <button
-                      onClick={() => setAutoResumed(false)}
+                      onClick={() => {
+                        setAutoResumed(false);
+                        setResumeBadge(null);
+                      }}
                       className="text-zinc-400 hover:text-white text-xs px-1 cursor-pointer"
                       title="Dismiss"
                     >

@@ -85,6 +85,8 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
           episode: row.episode,
           vote_average: row.vote_average,
           number_of_seasons: row.number_of_seasons,
+          progressSeconds: row.progress_seconds || 0,
+          durationSeconds: row.duration_seconds || 0,
           updatedAt: row.updated_at,
         })),
         likedMedia: (likedResults.results || []).map((row: any) => ({

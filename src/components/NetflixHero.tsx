@@ -258,29 +258,7 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
             </button>
           </div>
 
-          {/* Right Side: Carousel Progress Indicators */}
-          {list.length > 1 && (
-            <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-              {list.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => {
-                    setFade(false);
-                    setTimeout(() => {
-                      setCurrentIndex(idx);
-                      setFade(true);
-                    }, 200);
-                  }}
-                  className={`h-1.5 transition-all duration-300 rounded-full cursor-pointer ${
-                    currentIndex === idx
-                      ? 'w-6 bg-rose-600'
-                      : 'w-2 bg-zinc-600 hover:bg-zinc-400'
-                  }`}
-                  aria-label={`Go to slide ${idx + 1}`}
-                />
-              ))}
-            </div>
-          )}
+         
         </div>
       </div>
     </div>

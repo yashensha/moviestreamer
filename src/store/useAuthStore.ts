@@ -29,6 +29,17 @@ interface AuthState {
   checkSession: () => Promise<void>;
 }
 
+// Helper for safely parsing JSON without throwing 'Unexpected end of JSON input'
+async function safeParseResponse(res: Response): Promise<{ ok: boolean; status: number; data: any }> {
+  try {
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : null;
+    return { ok: res.ok, status: res.status, data };
+  } catch {
+    return { ok: res.ok, status: res.status, data: null };
+  }
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -64,14 +75,17 @@ export const useAuthStore = create<AuthState>()(
             body: JSON.stringify({ email, password }),
           });
 
-          const data = await res.json();
-          if (!res.ok || !data.success) {
-            const msg = data.error || 'Failed to sign in. Please verify your credentials.';
+          const { ok, status, data } = await safeParseResponse(res);
+
+          if (!ok || !data?.success) {
+            const msg = data?.error || (status === 404
+              ? 'Account not found. Please click "Sign up now" below to create an account.'
+              : 'Failed to sign in. Please verify your credentials.');
             set({ isLoading: false, error: msg });
             return { success: false, error: msg };
           }
 
-          const { token, user, watchHistory = [], likedMedia = [] } = data;
+          const { token, user, watchHistory = [], likedMedia = [], ratings = [] } = data;
 
           // Save token & user id in localStorage
           localStorage.setItem('moviewatcher_auth_token', token);
@@ -85,39 +99,16 @@ export const useAuthStore = create<AuthState>()(
             error: null,
           });
 
-          // Sync cloud history & likes into client Zustand store (merge with current)
-          const currentStore = useStreamStore.getState();
-          
-          // Merge watch history without duplicates
-          const mergedHistoryMap = new Map();
-          for (const item of watchHistory) {
-            mergedHistoryMap.set(`${item.type}:${item.id}`, item);
-          }
-          for (const item of currentStore.watchHistory) {
-            if (!mergedHistoryMap.has(`${item.type}:${item.id}`)) {
-              mergedHistoryMap.set(`${item.type}:${item.id}`, item);
-            }
-          }
-
-          // Merge likes without duplicates
-          const mergedLikesMap = new Map();
-          for (const item of likedMedia) {
-            mergedLikesMap.set(item.id, item);
-          }
-          for (const item of currentStore.likedMedia) {
-            if (!mergedLikesMap.has(item.id)) {
-              mergedLikesMap.set(item.id, item);
-            }
-          }
-
+          // Isolate per-user state: load this user's DB records directly
           useStreamStore.setState({
-            watchHistory: Array.from(mergedHistoryMap.values()),
-            likedMedia: Array.from(mergedLikesMap.values()),
+            watchHistory,
+            likedMedia,
+            userRatings: ratings,
           });
 
           return { success: true };
         } catch (err: any) {
-          const msg = err.message || 'Connection error while signing in.';
+          const msg = err?.message || 'Connection error while signing in.';
           set({ isLoading: false, error: msg });
           return { success: false, error: msg };
         }
@@ -132,9 +123,10 @@ export const useAuthStore = create<AuthState>()(
             body: JSON.stringify({ email, password, name }),
           });
 
-          const data = await res.json();
-          if (!res.ok || !data.success) {
-            const msg = data.error || 'Registration failed.';
+          const { ok, data } = await safeParseResponse(res);
+
+          if (!ok || !data?.success) {
+            const msg = data?.error || 'Registration failed. Please try again.';
             set({ isLoading: false, error: msg });
             return { success: false, error: msg };
           }
@@ -152,9 +144,17 @@ export const useAuthStore = create<AuthState>()(
             error: null,
           });
 
+          // New user starts with clean state
+          useStreamStore.setState({
+            watchHistory: [],
+            likedMedia: [],
+            userRatings: [],
+            seriesProgress: {},
+          });
+
           return { success: true };
         } catch (err: any) {
-          const msg = err.message || 'Connection error while creating account.';
+          const msg = err?.message || 'Connection error while creating account.';
           set({ isLoading: false, error: msg });
           return { success: false, error: msg };
         }
@@ -177,9 +177,10 @@ export const useAuthStore = create<AuthState>()(
         }
 
         localStorage.removeItem('moviewatcher_auth_token');
-        // Reset to new guest session
-        const newGuestId = `usr_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
-        localStorage.setItem('moviewatcher_user_id', newGuestId);
+        localStorage.removeItem('moviewatcher_user_id');
+
+        // Clear user data from screen/state
+        useStreamStore.getState().clearHistory();
 
         set({
           user: null,
@@ -199,26 +200,28 @@ export const useAuthStore = create<AuthState>()(
             },
           });
 
-          if (!res.ok) {
-            // Invalid or expired session
-            localStorage.removeItem('moviewatcher_auth_token');
-            set({ user: null, token: null });
+          const { ok, status, data } = await safeParseResponse(res);
+
+          if (!ok) {
+            if (status === 401) {
+              localStorage.removeItem('moviewatcher_auth_token');
+              localStorage.removeItem('moviewatcher_user_id');
+              useStreamStore.getState().clearHistory();
+              set({ user: null, token: null });
+            }
             return;
           }
 
-          const data = await res.json();
-          if (data.success && data.user) {
+          if (data?.success && data.user) {
             set({ user: data.user, token });
             localStorage.setItem('moviewatcher_user_id', data.user.id);
 
-            // Restore cloud history if client history is empty
-            const currentHistory = useStreamStore.getState().watchHistory;
-            if (currentHistory.length === 0 && data.watchHistory?.length > 0) {
-              useStreamStore.setState({
-                watchHistory: data.watchHistory,
-                likedMedia: data.likedMedia || [],
-              });
-            }
+            // Load this authenticated user's records from DB into client state
+            useStreamStore.setState({
+              watchHistory: data.watchHistory || [],
+              likedMedia: data.likedMedia || [],
+              userRatings: data.ratings || [],
+            });
           }
         } catch {
           // Keep offline state

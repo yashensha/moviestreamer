@@ -29,9 +29,10 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       userId: string;
       watchHistory?: any[];
       likedMedia?: any[];
+      userRatings?: any[];
     };
 
-    const { userId, watchHistory = [], likedMedia = [] } = body;
+    const { userId, watchHistory = [], likedMedia = [], userRatings = [] } = body;
 
     let targetUserId = userId;
     const authHeader = request.headers.get('Authorization') || '';
@@ -62,17 +63,9 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
        ON CONFLICT(id) DO UPDATE SET last_active = ?3`
     ).bind(targetUserId, now, now).run();
 
-    // 2. Compute Algorithm Model: Genre Affinity Weights
-    const genreWeights: Record<string, number> = {};
-
-    // Likes contribute +3.0 weight
+    // 2. Persist Liked Titles in D1
     for (const item of likedMedia) {
       const gids: number[] = item.genre_ids || (item.genres ? item.genres.map((g: any) => g.id) : []);
-      for (const gid of gids) {
-        genreWeights[String(gid)] = (genreWeights[String(gid)] || 0) + 3.0;
-      }
-
-      // Upsert liked titles in D1
       const recordId = `${targetUserId}:${item.id}`;
       await db.prepare(
         `INSERT INTO liked_titles (id, user_id, media_id, media_type, title, poster_path, backdrop_path, genre_ids, vote_average, liked_at)
@@ -92,13 +85,13 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       ).run();
     }
 
-    // Watch history contributes +1.5 weight per title
+    // 3. Persist Watch History in D1
     for (const item of watchHistory) {
       const recordId = `${targetUserId}:${item.type}:${item.id}`;
       await db.prepare(
-        `INSERT INTO watch_history (id, user_id, media_id, media_type, title, overview, poster_path, backdrop_path, release_date, season, episode, vote_average, number_of_seasons, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
-         ON CONFLICT(id) DO UPDATE SET season = ?10, episode = ?11, updated_at = ?14`
+        `INSERT INTO watch_history (id, user_id, media_id, media_type, title, overview, poster_path, backdrop_path, release_date, season, episode, vote_average, number_of_seasons, progress_seconds, duration_seconds, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+         ON CONFLICT(id) DO UPDATE SET season = ?10, episode = ?11, progress_seconds = ?14, duration_seconds = ?15, updated_at = ?16`
       ).bind(
         recordId,
         targetUserId,
@@ -113,19 +106,144 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
         item.episode || 1,
         item.vote_average || 0,
         item.number_of_seasons || 1,
+        item.progressSeconds || 0,
+        item.durationSeconds || 0,
         item.updatedAt || now
       ).run();
     }
 
-    // 3. Save calculated algorithm model in user_algorithm_model
+    // 4. Compute Unified Interaction Matrix & Weighting Formula
+    // Weights:
+    // - Letterboxd 5★ or In-App Heart: 5.0
+    // - Letterboxd 4★–4.5★: 4.0
+    // - In-App Completed Episode/Movie: 3.5
+    // - Letterboxd 3★: 2.5
+    // - Started Streaming (>10m dwell): 2.0
+    // - Letterboxd Watchlist: 1.5
+    // - Letterboxd 1★–2★: 0.0 (Hard Filter)
+    const itemMap = new Map<number, {
+      weights: number[];
+      isHardFiltered: boolean;
+      genreIds: number[];
+      isLiked: boolean;
+    }>();
+
+    // In-app Hearts
+    for (const item of likedMedia) {
+      const gids: number[] = item.genre_ids || (item.genres ? item.genres.map((g: any) => g.id) : []);
+      let entry = itemMap.get(item.id);
+      if (!entry) {
+        entry = { weights: [], isHardFiltered: false, genreIds: gids, isLiked: true };
+        itemMap.set(item.id, entry);
+      }
+      entry.isLiked = true;
+      entry.weights.push(5.0);
+    }
+
+    // Ratings
+    for (const r of userRatings) {
+      const gids: number[] = r.genre_ids || [];
+      let entry = itemMap.get(r.id);
+      if (!entry) {
+        entry = { weights: [], isHardFiltered: false, genreIds: gids, isLiked: false };
+        itemMap.set(r.id, entry);
+      }
+      if (entry.genreIds.length === 0 && gids.length > 0) entry.genreIds = gids;
+
+      if (r.rating !== undefined && r.rating !== null && !isNaN(r.rating)) {
+        if (r.rating <= 2.0) {
+          entry.isHardFiltered = true;
+          entry.weights.push(0.0);
+        } else if (r.rating >= 4.75) {
+          entry.weights.push(5.0);
+        } else if (r.rating >= 3.75) {
+          entry.weights.push(4.0);
+        } else {
+          entry.weights.push(2.5);
+        }
+      } else if (r.confidenceWeight === 1.5) {
+        entry.weights.push(1.5);
+      } else {
+        entry.weights.push(2.5);
+      }
+    }
+
+    // Watch history
+    for (const h of watchHistory) {
+      let entry = itemMap.get(h.id);
+      if (!entry) {
+        entry = { weights: [], isHardFiltered: false, genreIds: [], isLiked: false };
+        itemMap.set(h.id, entry);
+      }
+      const progress = h.progressSeconds || 0;
+      const duration = h.durationSeconds || 0;
+      const isCompleted = (duration > 0 && progress / duration >= 0.85) || progress >= 7200;
+
+      if (isCompleted) {
+        entry.weights.push(3.5);
+      } else if (progress >= 600) {
+        entry.weights.push(2.0);
+      } else {
+        entry.weights.push(1.0);
+      }
+    }
+
+    // 5. BM25 Normalization Calculation
+    const totalInteractions = itemMap.size;
+    const refLength = 50;
+    const b = 0.75;
+    const k1 = 1.2;
+    const bm25Dampener = totalInteractions > 0
+      ? (k1 + 1) / (1 + k1 * (1 - b + b * (totalInteractions / refLength)))
+      : 1.0;
+
+    const genreWeights: Record<string, number> = {};
+    const hardFilteredIds: number[] = [];
+    const topPositiveSeeds: number[] = [];
+
+    for (const [id, entry] of itemMap.entries()) {
+      let rawWeight = 0;
+      if (entry.isHardFiltered && !entry.isLiked) {
+        rawWeight = 0.0;
+        hardFilteredIds.push(id);
+      } else {
+        rawWeight = entry.weights.length > 0 ? Math.max(...entry.weights) : 1.0;
+        if (rawWeight >= 3.5) {
+          topPositiveSeeds.push(id);
+        }
+      }
+
+      const normalizedWeight = rawWeight * bm25Dampener;
+
+      if (rawWeight > 0) {
+        for (const gid of entry.genreIds) {
+          const key = String(gid);
+          genreWeights[key] = (genreWeights[key] || 0) + normalizedWeight;
+        }
+      }
+    }
+
+    // 6. Save Unified Algorithm Model in D1
+    const featureVectorMeta = JSON.stringify({
+      totalInteractions,
+      bm25Dampener: Math.round(bm25Dampener * 1000) / 1000,
+      topSeeds: topPositiveSeeds.slice(0, 50),
+    });
+
     await db.prepare(
       `INSERT INTO user_algorithm_model (user_id, model_version, genre_weights, actor_weights, director_weights, feature_vector, recommendation_cache, updated_at)
-       VALUES (?1, ?2, ?3, '{}', '{}', '[]', '[]', ?4)
-       ON CONFLICT(user_id) DO UPDATE SET genre_weights = ?3, updated_at = ?4`
+       VALUES (?1, ?2, ?3, '{}', '{}', ?4, ?5, ?6)
+       ON CONFLICT(user_id) DO UPDATE SET
+         genre_weights = ?3,
+         feature_vector = ?4,
+         recommendation_cache = ?5,
+         updated_at = ?6`
     ).bind(
       targetUserId,
-      'v1-session-affinity',
+      'v2-bm25-unified-matrix',
       JSON.stringify(genreWeights),
+      featureVectorMeta,
+      JSON.stringify(hardFilteredIds),
       now
     ).run();
 
@@ -133,8 +251,11 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       JSON.stringify({
         success: true,
         model: {
-          version: 'v1-session-affinity',
+          version: 'v2-bm25-unified-matrix',
           genreWeights,
+          bm25Dampener,
+          totalInteractions,
+          hardFilteredCount: hardFilteredIds.length,
           updatedAt: now,
         },
       }),

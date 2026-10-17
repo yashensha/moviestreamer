@@ -14,6 +14,7 @@ out/
 .env.*
 !.env.example
 *.local
+.dev-db.json
 
 # Logs
 logs/
