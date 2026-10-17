@@ -69,6 +69,8 @@ export interface SeriesProgress {
   poster_path?: string | null;
   backdrop_path?: string | null;
   release_date?: string;
+  genre_ids?: number[];
+  episode_run_time?: number[];
   progressSeconds?: number;
   durationSeconds?: number;
   updatedAt: number;

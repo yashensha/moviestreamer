@@ -6,7 +6,7 @@ import {
   type CuratedRecommendationRows,
   type ScoredRecommendationItem,
 } from '../services/recommendationPipeline';
-import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MediaCard } from './MediaCard';
 import { StarRatingModal } from './StarRatingModal';
 
@@ -140,11 +140,9 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
     totalCandidatePoolCount: 0,
     modelTimestamp: 0,
   });
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
-    setLoading(true);
 
     generateFullRecommendationPipeline(watchHistory, likedMedia, userRatings, {
       preferredType: mediaType,
@@ -152,12 +150,10 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
       .then((res) => {
         if (isMounted) {
           setPipelineData(res);
-          setLoading(false);
         }
       })
       .catch((err) => {
         console.warn('Recommendation pipeline error:', err);
-        if (isMounted) setLoading(false);
       });
 
     return () => {

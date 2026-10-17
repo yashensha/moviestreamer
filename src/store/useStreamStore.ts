@@ -41,6 +41,8 @@ interface StreamState {
       poster_path?: string | null;
       backdrop_path?: string | null;
       release_date?: string;
+      genre_ids?: number[];
+      episode_run_time?: number[];
       vote_average?: number;
       number_of_seasons?: number;
       seasons?: Season[];
@@ -139,6 +141,8 @@ export const useStreamStore = create<StreamState>()(
               poster_path: meta.poster_path ?? null,
               backdrop_path: meta.backdrop_path ?? null,
               release_date: meta.release_date,
+              genre_ids: meta.genre_ids,
+              episode_run_time: meta.episode_run_time,
               seasons: meta.seasons,
               updatedAt: now,
             },
@@ -156,6 +160,7 @@ export const useStreamStore = create<StreamState>()(
             poster_path: meta.poster_path ?? null,
             backdrop_path: meta.backdrop_path ?? null,
             release_date: meta.release_date,
+            episode_run_time: meta.episode_run_time,
             vote_average: meta.vote_average,
             number_of_seasons: meta.number_of_seasons,
             seasons: meta.seasons,
@@ -593,8 +598,8 @@ export const useStreamStore = create<StreamState>()(
                 type: 'tv',
                 title: sp.title || `Series #${numId}`,
                 overview: sp.overview,
-                poster_path: sp.poster_path,
-                backdrop_path: sp.backdrop_path,
+                poster_path: sp.poster_path ?? null,
+                backdrop_path: sp.backdrop_path ?? null,
                 release_date: sp.release_date,
                 season: sp.season,
                 episode: sp.episode,

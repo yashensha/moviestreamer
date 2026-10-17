@@ -44,7 +44,6 @@ export interface TasteMatrixProfile {
   subgenreWeights?: Record<string, number>;
   topSubgenres?: Array<{ name: string; score: number }>;
   signalsCount: Record<InteractionSignalType, number>;
-  habitGenreBonus?: Record<number, number>;
   generatedAt: number;
 }
 
@@ -387,7 +386,6 @@ export function computeUnifiedInteractionMatrix(
     genreWeights,
     topGenres,
     signalsCount,
-    habitGenreBonus,
     generatedAt: Date.now(),
   };
 }

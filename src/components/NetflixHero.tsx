@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { MediaItem } from '../types/movie';
 import { getBackdropUrl, getLogoUrl, fetchMediaLogo, getCachedLogo } from '../services/tmdb';
-import { Play, Info, Star, ChevronLeft, ChevronRight, Heart, Check } from 'lucide-react';
+import { Play, Info, Star, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { useStreamStore } from '../store/useStreamStore';
 
 interface NetflixHeroProps {
@@ -117,16 +117,12 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
     });
   }, [list]);
 
-  const toggleLike = useStreamStore((state) => state.toggleLike);
-  const isLiked = useStreamStore((state) => state.isLiked);
-  const toggleWatched = useStreamStore((state) => state.toggleWatched);
   const isWatched = useStreamStore((state) => state.isWatched);
   const watchHistory = useStreamStore((state) => state.watchHistory);
   const seriesProgress = useStreamStore((state) => state.seriesProgress);
 
   if (!currentItem) return null;
 
-  const liked = isLiked(currentItem.id);
   const watched = isWatched(currentItem.id);
   const prog = seriesProgress[currentItem.id];
   const hist = watchHistory.find((h) => h.id === currentItem.id);

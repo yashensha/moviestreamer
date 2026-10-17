@@ -356,7 +356,6 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
                 number_of_seasons: media.number_of_seasons,
                 seasons: media.seasons,
                 episode_run_time: actualRuntime ? [actualRuntime] : media.episode_run_time,
-                runtime: actualRuntime,
               });
             }
           }
@@ -419,7 +418,6 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
         number_of_seasons: media.number_of_seasons,
         seasons: media.seasons,
         episode_run_time: actualRuntime ? [actualRuntime] : media.episode_run_time,
-        runtime: actualRuntime,
       });
     }
 

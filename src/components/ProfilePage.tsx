@@ -46,6 +46,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
   const watchedList = useStreamStore((state) => state.watchedList) || [];
   const removeFromWatchlist = useStreamStore((state) => state.removeFromWatchlist);
   const getMediaRating = useStreamStore((state) => state.getMediaRating);
+  const removeFromHistory = useStreamStore((state) => state.removeFromHistory);
+  const removeUserRating = useStreamStore((state) => state.removeUserRating);
+  const clearHistory = useStreamStore((state) => state.clearHistory);
+  const toggleLike = useStreamStore((state) => state.toggleLike);
+  const toggleWatched = useStreamStore((state) => state.toggleWatched);
+  const markAsWatched = useStreamStore((state) => state.markAsWatched);
+  const isWatched = useStreamStore((state) => state.isWatched);
 
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
