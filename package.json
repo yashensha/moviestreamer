@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler pages deploy dist",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=moviewatcher",
     "d1:init": "wrangler d1 execute moviewatcher-db --remote --file=./schema.sql",
     "d1:local": "wrangler d1 execute moviewatcher-db --local --file=./schema.sql"
   },
@@ -29,6 +29,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "oxlint": "^1.81.0",
     "typescript": "~6.0.2",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "wrangler": "^4.151.1"
   }
 }

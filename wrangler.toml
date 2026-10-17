@@ -10,9 +10,9 @@ pages_build_output_dir = "dist"
 # Replace 'database_id' below with your actual database_id
 # ==============================================================================
 [[d1_databases]]
-binding = "DB"
+binding = "moviewatcher_db"
 database_name = "moviewatcher-db"
-database_id = "your-d1-database-id-here"
+database_id = "82a24800-6adf-4920-9863-5bbec7cc9316"    
 
 [vars]
 ENVIRONMENT = "production"

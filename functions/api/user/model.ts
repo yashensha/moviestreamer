@@ -5,11 +5,13 @@
 
 interface Env {
   DB?: any;
+  moviewatcher_db?: any;
 }
 
 export const onRequestGet = async (context: { request: Request; env: Env }) => {
   try {
     const { request, env } = context;
+    const db = env.moviewatcher_db || env.DB;
     const url = new URL(request.url);
     const userId = url.searchParams.get('userId');
 
@@ -20,7 +22,7 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
       );
     }
 
-    if (!env.DB) {
+    if (!db) {
       return new Response(
         JSON.stringify({
           model: null,
@@ -33,17 +35,17 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     }
 
     // 1. Fetch Algorithm Model
-    const modelRecord = await env.DB.prepare(
+    const modelRecord = await db.prepare(
       `SELECT * FROM user_algorithm_model WHERE user_id = ?1`
     ).bind(userId).first();
 
     // 2. Fetch Watch History
-    const historyResults = await env.DB.prepare(
+    const historyResults = await db.prepare(
       `SELECT * FROM watch_history WHERE user_id = ?1 ORDER BY updated_at DESC LIMIT 30`
     ).bind(userId).all();
 
     // 3. Fetch Liked Titles
-    const likedResults = await env.DB.prepare(
+    const likedResults = await db.prepare(
       `SELECT * FROM liked_titles WHERE user_id = ?1 ORDER BY liked_at DESC LIMIT 50`
     ).bind(userId).all();
 

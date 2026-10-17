@@ -4,14 +4,16 @@
 // ==============================================================================
 
 interface Env {
-  DB?: any; // Cloudflare D1 Database binding
+  DB?: any;
+  moviewatcher_db?: any;
 }
 
 export const onRequestPost = async (context: { request: Request; env: Env }) => {
   try {
     const { request, env } = context;
+    const db = env.moviewatcher_db || env.DB;
 
-    if (!env.DB) {
+    if (!db) {
       // Local dev or D1 binding not yet connected
       return new Response(
         JSON.stringify({
@@ -41,7 +43,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     const now = Date.now();
 
     // 1. Ensure user exists
-    await env.DB.prepare(
+    await db.prepare(
       `INSERT INTO users (id, created_at, last_active)
        VALUES (?1, ?2, ?3)
        ON CONFLICT(id) DO UPDATE SET last_active = ?3`
@@ -59,7 +61,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
 
       // Upsert liked titles in D1
       const recordId = `${userId}:${item.id}`;
-      await env.DB.prepare(
+      await db.prepare(
         `INSERT INTO liked_titles (id, user_id, media_id, media_type, title, poster_path, backdrop_path, genre_ids, vote_average, liked_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT(id) DO UPDATE SET liked_at = ?10`
@@ -80,7 +82,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     // Watch history contributes +1.5 weight per title
     for (const item of watchHistory) {
       const recordId = `${userId}:${item.type}:${item.id}`;
-      await env.DB.prepare(
+      await db.prepare(
         `INSERT INTO watch_history (id, user_id, media_id, media_type, title, overview, poster_path, backdrop_path, release_date, season, episode, vote_average, number_of_seasons, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(id) DO UPDATE SET season = ?10, episode = ?11, updated_at = ?14`
@@ -103,7 +105,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     }
 
     // 3. Save calculated algorithm model in user_algorithm_model
-    await env.DB.prepare(
+    await db.prepare(
       `INSERT INTO user_algorithm_model (user_id, model_version, genre_weights, actor_weights, director_weights, feature_vector, recommendation_cache, updated_at)
        VALUES (?1, ?2, ?3, '{}', '{}', '[]', '[]', ?4)
        ON CONFLICT(user_id) DO UPDATE SET genre_weights = ?3, updated_at = ?4`
