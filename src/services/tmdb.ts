@@ -1013,6 +1013,12 @@ export const fetchMediaDetails = async (
             episode_count: s.episode_count || 8,
           }));
 
+        const episodeRunTime = (d.episode_run_time && d.episode_run_time.length > 0)
+          ? d.episode_run_time
+          : (d as any).last_episode_to_air?.runtime
+          ? [(d as any).last_episode_to_air.runtime]
+          : undefined;
+
         return {
           id: d.id,
           title: d.name || 'Untitled',
@@ -1028,6 +1034,7 @@ export const fetchMediaDetails = async (
           number_of_seasons: d.number_of_seasons || seasons.length,
           number_of_episodes: d.number_of_episodes || 0,
           seasons: seasons.length > 0 ? seasons : undefined,
+          episode_run_time: episodeRunTime,
           tagline: d.tagline,
         };
       }
@@ -1072,6 +1079,12 @@ export const fetchMediaDetails = async (
             episode_count: s.episode_count || 8,
           }));
 
+        const episodeRunTime = (d.episode_run_time && d.episode_run_time.length > 0)
+          ? d.episode_run_time
+          : d.last_episode_to_air?.runtime
+          ? [d.last_episode_to_air.runtime]
+          : undefined;
+
         return {
           id: d.id,
           title: d.name || 'Untitled',
@@ -1087,6 +1100,7 @@ export const fetchMediaDetails = async (
           number_of_seasons: d.number_of_seasons || seasons.length,
           number_of_episodes: d.number_of_episodes || 0,
           seasons: seasons.length > 0 ? seasons : undefined,
+          episode_run_time: episodeRunTime,
           tagline: d.tagline,
         };
       } else {

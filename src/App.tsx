@@ -17,6 +17,7 @@ import { InnerDetailPage } from './components/InnerDetailPage';
 import { SearchResults } from './components/SearchResults';
 import { ProfilePage } from './components/ProfilePage';
 import { AuthModal } from './components/AuthModal';
+import { ContinueWatchingRow } from './components/ContinueWatchingRow';
 import { useStreamStore } from './store/useStreamStore';
 import { useAuthStore } from './store/useAuthStore';
 
@@ -37,6 +38,7 @@ function BrowseView({
   const [searchResults, setSearchResults] = useState<MediaItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const watchHistory = useStreamStore((state) => state.watchHistory);
+  const isWatched = useStreamStore((state) => state.isWatched);
 
   // Search with debounce using tmdb-ts
   useEffect(() => {
@@ -56,9 +58,29 @@ function BrowseView({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Map watch history to MediaItems for the Hero banner
+  // Filter out ANY watched titles (movies & shows) from Home page rows
+  const homeTrending = useMemo(() => {
+    if (tab === 'home') {
+      return trending.filter((item) => !isWatched(item.id));
+    }
+    return trending;
+  }, [trending, isWatched, tab]);
+
+  const homeMoviesList = useMemo(() => {
+    if (tab === 'home') {
+      return moviesList.filter((item) => !isWatched(item.id));
+    }
+    return moviesList;
+  }, [moviesList, isWatched, tab]);
+
+  // Active continue watching items (strictly excluding completed/watched titles)
+  const activeContinueWatching = useMemo(() => {
+    return watchHistory.filter((item) => !isWatched(item.id));
+  }, [watchHistory, isWatched]);
+
+  // Map active continue watching to MediaItems for the Hero banner (strictly no episodes for movies)
   const continueWatchingMedia = useMemo<MediaItem[]>(() => {
-    return watchHistory.map((item) => ({
+    return activeContinueWatching.map((item) => ({
       id: item.id,
       title: item.title,
       overview: item.overview || '',
@@ -68,10 +90,10 @@ function BrowseView({
       vote_average: item.vote_average ?? 8.0,
       media_type: item.type,
       number_of_seasons: item.number_of_seasons,
-      season: item.season,
-      episode: item.episode,
+      season: item.type === 'tv' ? item.season : undefined,
+      episode: item.type === 'tv' ? item.episode : undefined,
     }));
-  }, [watchHistory]);
+  }, [activeContinueWatching]);
 
   const featuredList = useMemo(() => {
     if (tab === 'tv') {
@@ -80,14 +102,14 @@ function BrowseView({
     if (tab === 'movie') {
       return moviesList.slice(0, 8);
     }
-    // On home: feature continue watching if available, otherwise trending
+    // On home: feature continue watching FIRST if available, then trending
     if (continueWatchingMedia.length > 0) {
-      return continueWatchingMedia.slice(0, 8);
+      const cwIds = new Set(continueWatchingMedia.map((c) => c.id));
+      const remainingTrending = homeTrending.filter((h) => !cwIds.has(h.id));
+      return [...continueWatchingMedia, ...remainingTrending].slice(0, 10);
     }
-    return trending.slice(0, 8);
-  }, [tab, seriesList, moviesList, continueWatchingMedia, trending]);
-
-  const top10Items = trending.slice(0, 10);
+    return homeTrending.slice(0, 8);
+  }, [tab, seriesList, moviesList, continueWatchingMedia, homeTrending]);
 
   return (
     <div className="min-h-screen bg-[#141414] text-zinc-100 flex flex-col selection:bg-rose-600 selection:text-white">
@@ -121,7 +143,27 @@ function BrowseView({
 
           {/* Carousel Rows Container starting cleanly below the 100vh hero */}
           <div className="relative z-20 pt-6 space-y-6 pb-20">
-            {/* Dynamic TMDB Taste Tailored Recommendations Row - adapts to current page preference */}
+            {/* Continue Watching Row (Directly below Hero on Home) */}
+            {tab === 'home' && activeContinueWatching.length > 0 && (
+              <ContinueWatchingRow
+                onResume={(item) =>
+                  onOpenItem({
+                    id: item.id,
+                    title: item.title,
+                    poster_path: item.poster_path,
+                    backdrop_path: item.backdrop_path,
+                    media_type: item.type,
+                    overview: item.overview || '',
+                    season: item.type === 'tv' ? item.season : undefined,
+                    episode: item.type === 'tv' ? item.episode : undefined,
+                    vote_average: item.vote_average ?? 8.0,
+                    release_date: item.release_date || '',
+                  })
+                }
+              />
+            )}
+
+            {/* Dynamic TMDB Taste Tailored Recommendations Row */}
             <TailoredRecommendationsRow
               onSelect={onOpenItem}
               mediaType={tab === 'tv' ? 'tv' : tab === 'movie' ? 'movie' : undefined}
@@ -134,27 +176,17 @@ function BrowseView({
               }
             />
 
-            {/* Trending Now */}
+            {/* Trending Now (Filtered on Home) */}
             {(tab === 'home' || tab === 'movie') && (
               <MovieRow
                 title="Trending Now"
-                items={trending}
+                items={homeTrending}
                 onSelect={onOpenItem}
               />
             )}
 
-            {/* Top 10 in the World Today with stylized rank numbers */}
-            {tab === 'home' && (
-              <MovieRow
-                title="Top 10 Today"
-                items={top10Items}
-                onSelect={onOpenItem}
-                isTop10
-              />
-            )}
-
-            {/* Popular TV Shows & Series */}
-            {(tab === 'home' || tab === 'tv') && (
+            {/* Popular TV Shows & Series (Only on TV tab, removed from Home) */}
+            {tab === 'tv' && (
               <MovieRow
                 title="Critically Acclaimed TV Shows & Series"
                 items={seriesList}
@@ -162,11 +194,11 @@ function BrowseView({
               />
             )}
 
-            {/* Blockbuster Movies */}
+            {/* Blockbuster Movies (Filtered on Home) */}
             {(tab === 'home' || tab === 'movie') && (
               <MovieRow
                 title="Blockbuster Movies"
-                items={moviesList}
+                items={homeMoviesList}
                 onSelect={onOpenItem}
               />
             )}

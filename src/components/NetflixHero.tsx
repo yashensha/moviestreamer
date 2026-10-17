@@ -121,11 +121,19 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
   const isLiked = useStreamStore((state) => state.isLiked);
   const toggleWatched = useStreamStore((state) => state.toggleWatched);
   const isWatched = useStreamStore((state) => state.isWatched);
+  const watchHistory = useStreamStore((state) => state.watchHistory);
+  const seriesProgress = useStreamStore((state) => state.seriesProgress);
 
   if (!currentItem) return null;
 
   const liked = isLiked(currentItem.id);
   const watched = isWatched(currentItem.id);
+  const prog = seriesProgress[currentItem.id];
+  const hist = watchHistory.find((h) => h.id === currentItem.id);
+  const isContinueWatching = Boolean(!watched && (prog || hist || currentItem.season));
+  const resolvedSeason = currentItem.season || prog?.season || hist?.season;
+  const resolvedEpisode = currentItem.episode || prog?.episode || hist?.episode;
+
   const backdrop = getBackdropUrl(currentItem.backdrop_path);
   const releaseYear = currentItem.release_date
     ? new Date(currentItem.release_date).getFullYear()
@@ -195,24 +203,25 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
         )}
 
         {/* Metadata Badges */}
-        <div className="flex flex-wrap items-center gap-3 text-xs md:text-sm font-semibold pt-1">
-          <span className="text-zinc-400">{releaseYear}</span>
-          <span className="border border-zinc-600 px-1.5 py-0.5 rounded text-[11px] text-zinc-300">
-            16+
-          </span>
-          {currentItem.season && currentItem.episode && (
-            <span className="text-zinc-200 bg-white/10 border border-white/20 px-2 py-0.5 rounded text-xs font-semibold">
-              Season {currentItem.season}, Episode {currentItem.episode}
+        <div className="flex flex-wrap items-center gap-2.5 text-xs md:text-sm font-semibold pt-1">
+          {isContinueWatching && (
+            <span className="bg-rose-600 text-white text-[10px] md:text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded shadow flex items-center gap-1.5 border border-rose-400/50">
+              <Play className="w-3 h-3 fill-white" />
+              <span>Continue Watching</span>
             </span>
           )}
-          {currentItem.media_type === 'tv' ? (
+          {releaseYear && (
+            <span className="text-zinc-400 font-medium">{releaseYear}</span>
+          )}
+          {currentItem.media_type === 'tv' && resolvedSeason && resolvedEpisode && (
+            <span className="text-rose-200 bg-rose-950/80 border border-rose-800/60 px-2.5 py-1 rounded text-xs font-mono font-bold">
+              Season {resolvedSeason}, Episode {resolvedEpisode}
+            </span>
+          )}
+          {currentItem.media_type === 'tv' && (
             <span className="text-zinc-300">
               {currentItem.number_of_seasons || 1} Season
               {currentItem.number_of_seasons && currentItem.number_of_seasons > 1 ? 's' : ''}
-            </span>
-          ) : (
-            <span className="border border-zinc-600/80 px-1.5 py-0.5 rounded text-[10px] text-zinc-300 uppercase">
-              Ultra HD 4K
             </span>
           )}
           {watched && (
@@ -221,10 +230,12 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
               Watched
             </span>
           )}
-          <span className="flex items-center gap-1 text-amber-400">
-            <Star className="w-3.5 h-3.5 fill-amber-400" />
-            {currentItem.vote_average ? currentItem.vote_average.toFixed(1) : '8.2'}
-          </span>
+          {currentItem.vote_average ? (
+            <span className="flex items-center gap-1 text-amber-400 font-bold">
+              <Star className="w-3.5 h-3.5 fill-amber-400" />
+              {currentItem.vote_average.toFixed(1)}
+            </span>
+          ) : null}
         </div>
 
         {/* Overview */}
@@ -236,12 +247,20 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
         <div className="pt-2 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3.5">
             <button
-              onClick={() => onPlay(currentItem)}
+              onClick={() =>
+                onPlay({
+                  ...currentItem,
+                  season: resolvedSeason,
+                  episode: resolvedEpisode,
+                })
+              }
               className="flex items-center gap-2.5 px-7 py-3 rounded-md bg-white hover:bg-white/85 text-black font-bold text-sm md:text-base transition duration-200 shadow-xl cursor-pointer"
             >
               <Play className="w-5 h-5 fill-black" />
-              {currentItem.season && currentItem.episode
-                ? `Resume S${currentItem.season}:E${currentItem.episode}`
+              {isContinueWatching
+                ? currentItem.media_type === 'tv' && resolvedSeason && resolvedEpisode
+                  ? `Resume S${resolvedSeason}:E${resolvedEpisode}`
+                  : 'Resume Playing'
                 : 'Play Now'}
             </button>
 
@@ -250,37 +269,10 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
               className="flex items-center gap-2 px-6 py-3 rounded-md bg-zinc-600/60 hover:bg-zinc-600/40 text-white font-bold text-sm md:text-base backdrop-blur-sm transition duration-200 border border-zinc-500/30 cursor-pointer"
             >
               <Info className="w-5 h-5" />
-              More Info & Episodes
-            </button>
-
-            <button
-              onClick={() => toggleWatched(currentItem)}
-              className={`flex items-center gap-2 px-5 py-3 rounded-md font-bold text-sm md:text-base backdrop-blur-sm transition duration-200 border cursor-pointer ${
-                watched
-                  ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-950/40'
-                  : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-200 border-zinc-600/60 hover:border-emerald-500 hover:text-emerald-400'
-              }`}
-              title={watched ? 'Watched! Click to unmark' : 'Mark as watched to train recommendations'}
-            >
-              <Check className={`w-5 h-5 stroke-[2.5] ${watched ? 'text-white' : 'text-emerald-400'}`} />
-              {watched ? 'Watched' : 'Mark Watched'}
-            </button>
-
-            <button
-              onClick={() => toggleLike(currentItem)}
-              className={`flex items-center gap-2 px-5 py-3 rounded-md font-bold text-sm md:text-base backdrop-blur-sm transition duration-200 border cursor-pointer ${
-                liked
-                  ? 'bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-950/40'
-                  : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-200 border-zinc-600/60'
-              }`}
-              title={liked ? 'Liked! Click to unlike' : 'Like title to train your recommendations'}
-            >
-              <Heart className={`w-5 h-5 ${liked ? 'fill-white text-white' : 'text-rose-400'}`} />
-              {liked ? 'Liked' : 'Like'}
+              {currentItem.media_type === 'tv' ? 'More Info & Episodes' : 'More Info'}
             </button>
           </div>
 
-         
         </div>
       </div>
     </div>

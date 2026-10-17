@@ -8,7 +8,7 @@ export type InteractionSignalType =
   | 'completed'        // In-App Completed Episode/Movie (3.5)
   | 'letterboxd_3'     // Letterboxd 2.5★–3.5★ / 3★ (2.5)
   | 'dwell_stream'     // Started Streaming >10m dwell (2.0)
-  | 'watchlist'        // Letterboxd Watchlist (1.5)
+  | 'watchlist'        // Letterboxd / In-App Watchlist (1.5)
   | 'streaming_short'  // Started Streaming <10m dwell (1.0)
   | 'hard_filter';     // Letterboxd 1★–2★ (0.0 / Negative Hard Filter)
 
@@ -44,6 +44,7 @@ export interface TasteMatrixProfile {
   subgenreWeights?: Record<string, number>;
   topSubgenres?: Array<{ name: string; score: number }>;
   signalsCount: Record<InteractionSignalType, number>;
+  habitGenreBonus?: Record<number, number>;
   generatedAt: number;
 }
 
@@ -56,10 +57,6 @@ export interface BM25Config {
 /**
  * Calculates the BM25 library length normalization dampening factor:
  * scale(L) = (k1 + 1) / (1 + k1 * (1 - b + b * (L / L_ref)))
- * 
- * - For L = 50: scale = 1.0 (neutral baseline)
- * - For casual viewers (e.g. L = 10): scale ≈ 1.48 (boosts sparse signals)
- * - For power viewers with 1,000+ imported movies: scale ≈ 0.11 (smoothly dampens aggregate skew)
  */
 export function calculateBM25Dampener(
   itemCount: number,
@@ -84,6 +81,7 @@ export function calculateBM25Dampener(
  * 1. Letterboxd ratings & watchlists
  * 2. In-app hearts / likes
  * 3. In-app streaming dwell and completions
+ * 4. Active weekly/monthly watch habit dwell bonus
  * 
  * Weights Formula:
  * - Letterboxd 5★ or In-App Heart: 5.0
@@ -91,7 +89,7 @@ export function calculateBM25Dampener(
  * - In-App Completed Episode/Movie: 3.5
  * - Letterboxd 3★: 2.5
  * - Started Streaming (>10m dwell): 2.0
- * - Letterboxd Watchlist: 1.5
+ * - Letterboxd / In-App Watchlist: 1.5
  * - Letterboxd 1★–2★: 0.0 / Hard Filter
  */
 export function computeUnifiedInteractionMatrix(
@@ -389,6 +387,7 @@ export function computeUnifiedInteractionMatrix(
     genreWeights,
     topGenres,
     signalsCount,
+    habitGenreBonus,
     generatedAt: Date.now(),
   };
 }

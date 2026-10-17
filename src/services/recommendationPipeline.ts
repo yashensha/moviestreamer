@@ -313,40 +313,36 @@ export async function generateFullRecommendationPipeline(
   // 1. "Top Picks for You" (highest overall hybrid score)
   const topPicks = scoredPool.slice(0, 20);
 
-  // 2. "Because You Watched [Title]" (highest single-seed similarity for top seed)
+  // 2. "Because You Watched [Title]" (dynamically rotates across eligible positive seeds on each refresh)
   let becauseYouWatched: { seedTitle: string; items: ScoredRecommendationItem[] } | undefined =
     undefined;
 
   if (matrix.positiveSeeds.length > 0) {
-    const primarySeed = matrix.positiveSeeds[0];
-    const seedCandidates = scoredPool
-      .filter((s) => s.seedTitle === primarySeed.title)
-      .slice(0, 14);
+    // Group all scored candidates by their source seed title
+    const seedGroups = new Map<string, ScoredRecommendationItem[]>();
+    for (const item of scoredPool) {
+      if (item.seedTitle) {
+        const list = seedGroups.get(item.seedTitle) || [];
+        list.push(item);
+        seedGroups.set(item.seedTitle, list);
+      }
+    }
 
-    if (seedCandidates.length >= 4) {
-      becauseYouWatched = {
-        seedTitle: primarySeed.title,
-        items: seedCandidates,
-      };
-    } else {
-      // Fallback: any seed with >= 4 matched candidates
-      const seedGroups = new Map<string, ScoredRecommendationItem[]>();
-      for (const item of scoredPool) {
-        if (item.seedTitle) {
-          const list = seedGroups.get(item.seedTitle) || [];
-          list.push(item);
-          seedGroups.set(item.seedTitle, list);
-        }
+    // Collect all seeds that have >= 3 matching candidates
+    const eligibleSeeds: Array<{ seedTitle: string; items: ScoredRecommendationItem[] }> = [];
+    for (const [title, list] of seedGroups.entries()) {
+      if (list.length >= 3) {
+        eligibleSeeds.push({
+          seedTitle: title,
+          items: list.slice(0, 16),
+        });
       }
-      for (const [title, list] of seedGroups.entries()) {
-        if (list.length >= 4) {
-          becauseYouWatched = {
-            seedTitle: title,
-            items: list.slice(0, 14),
-          };
-          break;
-        }
-      }
+    }
+
+    if (eligibleSeeds.length > 0) {
+      // Pick a random seed among eligible titles so each refresh/page visit gives a dynamic discovery experience
+      const randomIndex = Math.floor(Math.random() * eligibleSeeds.length);
+      becauseYouWatched = eligibleSeeds[randomIndex];
     }
   }
 

@@ -40,6 +40,7 @@ export interface MediaItem {
   seasons?: Season[];
   season?: number;
   episode?: number;
+  episode_run_time?: number[];
   tagline?: string;
 }
 
@@ -71,7 +72,10 @@ export interface SeriesProgress {
   progressSeconds?: number;
   durationSeconds?: number;
   updatedAt: number;
+  seasons?: Season[];
 }
+
+export type MediaStatus = 'watched' | 'watching' | 'watchlist' | 'none';
 
 export interface WatchHistoryItem {
   id: number;
@@ -85,6 +89,8 @@ export interface WatchHistoryItem {
   episode?: number;
   vote_average?: number;
   number_of_seasons?: number;
+  seasons?: Season[];
+  episode_run_time?: number[];
   progressSeconds?: number;
   durationSeconds?: number;
   updatedAt: number;
@@ -113,3 +119,4 @@ export interface LetterboxdRawEntry {
   letterboxdUri?: string;
   isWatchlist?: boolean;
 }
+

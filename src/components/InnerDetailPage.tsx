@@ -27,8 +27,11 @@ import {
   ChevronRight,
   ChevronDown,
   Check,
-  Heart
+  Heart,
+  Bookmark,
 } from 'lucide-react';
+import { StarRatingModal } from './StarRatingModal';
+import { MediaCard } from './MediaCard';
 
 interface InnerDetailPageProps {
   mediaId?: number;
@@ -143,7 +146,12 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
   const isLiked = useStreamStore((state) => state.isLiked);
   const toggleWatched = useStreamStore((state) => state.toggleWatched);
   const isWatched = useStreamStore((state) => state.isWatched);
+  const toggleWatchlist = useStreamStore((state) => state.toggleWatchlist);
+  const isInWatchlist = useStreamStore((state) => state.isInWatchlist);
+  const getMediaRating = useStreamStore((state) => state.getMediaRating);
   const getPlaybackProgress = useStreamStore((state) => state.getPlaybackProgress);
+
+  const [ratingModalMedia, setRatingModalMedia] = useState<MediaItem | null>(null);
 
   // Fetch dynamic TMDB recommendations when media changes
   useEffect(() => {
@@ -297,6 +305,8 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
             release_date: details.release_date,
             vote_average: details.vote_average,
             number_of_seasons: details.number_of_seasons,
+            seasons: details.seasons,
+            episode_run_time: details.episode_run_time,
           });
         } else {
           // Record movie to history
@@ -325,10 +335,30 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
           setEpisodes(eps);
           setLoadingEpisodes(false);
 
+          const foundRuntime = eps.find((e) => e.runtime && e.runtime > 0)?.runtime;
+          if (foundRuntime && (!media.episode_run_time || media.episode_run_time.length === 0)) {
+            media.episode_run_time = [foundRuntime];
+          }
+
           // If this season is currently playing, sync playingEp details
           if (viewingSeason === playingSeason) {
             const current = eps.find((e) => e.episode_number === playingEpisode);
-            if (current) setPlayingEp(current);
+            if (current) {
+              setPlayingEp(current);
+              const actualRuntime = current.runtime || foundRuntime || (media.episode_run_time && media.episode_run_time[0]);
+              saveSeriesEpisode(media.id, playingSeason, playingEpisode, {
+                title: media.title,
+                overview: media.overview,
+                poster_path: media.poster_path,
+                backdrop_path: media.backdrop_path,
+                release_date: media.release_date,
+                vote_average: media.vote_average,
+                number_of_seasons: media.number_of_seasons,
+                seasons: media.seasons,
+                episode_run_time: actualRuntime ? [actualRuntime] : media.episode_run_time,
+                runtime: actualRuntime,
+              });
+            }
           }
         }
       });
@@ -378,6 +408,7 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
     }
 
     if (media) {
+      const actualRuntime = epObj?.runtime || (media.episode_run_time && media.episode_run_time[0]);
       saveSeriesEpisode(media.id, seasonNum, episodeNum, {
         title: media.title,
         overview: media.overview,
@@ -386,6 +417,9 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
         release_date: media.release_date,
         vote_average: media.vote_average,
         number_of_seasons: media.number_of_seasons,
+        seasons: media.seasons,
+        episode_run_time: actualRuntime ? [actualRuntime] : media.episode_run_time,
+        runtime: actualRuntime,
       });
     }
 
@@ -662,9 +696,9 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
                     </div>
                   )}
 
-                  {/* Year & Rating under Genres + Like button */}
-                  <div className="flex items-center justify-between gap-3 text-xs text-zinc-400 pt-0.5">
-                    <div className="flex items-center gap-3">
+                  {/* Year & Rating under Genres + Like & Status buttons */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-400 pt-0.5">
+                    <div className="flex flex-wrap items-center gap-3">
                       {releaseYear && (
                         <span className="flex items-center gap-1.5 font-medium text-zinc-300">
                           <Calendar className="w-3.5 h-3.5 text-zinc-400" />
@@ -677,7 +711,36 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Letterboxd 5-Star Rating Trigger */}
+                      <button
+                        onClick={() => setRatingModalMedia(media)}
+                        className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
+                          getMediaRating(media.id)
+                            ? 'bg-[#00E054] text-black border-[#00E054] shadow-md shadow-emerald-950/50'
+                            : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80 hover:border-[#00E054] hover:text-[#00E054]'
+                        }`}
+                        title="Rate with Letterboxd 5-Stars"
+                      >
+                        <Star className={`w-3.5 h-3.5 ${getMediaRating(media.id) ? 'fill-black' : 'text-zinc-400'}`} />
+                        <span>{getMediaRating(media.id) ? `${getMediaRating(media.id)}★ Rated` : 'Rate 5★'}</span>
+                      </button>
+
+                      {/* Watchlist Toggle */}
+                      <button
+                        onClick={() => toggleWatchlist(media)}
+                        className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
+                          isInWatchlist(media.id)
+                            ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-950/50'
+                            : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80 hover:border-amber-500 hover:text-amber-400'
+                        }`}
+                        title={isInWatchlist(media.id) ? 'In Watchlist! Click to remove' : 'Add to Watchlist'}
+                      >
+                        <Bookmark className={`w-3.5 h-3.5 ${isInWatchlist(media.id) ? 'fill-white stroke-[2.5]' : 'text-amber-400'}`} />
+                        <span>{isInWatchlist(media.id) ? 'In Watchlist' : 'Watchlist'}</span>
+                      </button>
+
+                      {/* Watched Toggle */}
                       <button
                         onClick={() => toggleWatched(media)}
                         className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
@@ -691,6 +754,7 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
                         <span>{isWatched(media.id) ? 'Watched' : 'Mark Watched'}</span>
                       </button>
 
+                      {/* Like Toggle */}
                       <button
                         onClick={() => toggleLike(media)}
                         className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
@@ -958,79 +1022,45 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
             </div>
           </div>
         ) : (
-          /* Movie: Full width details banner */
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 p-6 rounded-none bg-[#181818] border border-zinc-800">
-            <div className="hidden sm:flex flex-col justify-between md:col-span-1 space-y-3">
-              <div className="space-y-3">
-                <img
-                  src={poster}
-                  alt={media.title}
-                  className="w-full rounded-none shadow-xl border border-zinc-700/80 object-cover aspect-[2/3]"
-                />
+          /* Movie: Dedicated Full Width Cinematic Banner */
+          <div className="flex flex-col sm:flex-row gap-6 p-6 sm:p-8 rounded-none bg-[#181818] border border-zinc-800">
+            {/* Movie Poster on Left */}
+            <div className="w-36 sm:w-48 md:w-56 flex-shrink-0 flex flex-col gap-3">
+              <img
+                src={poster}
+                alt={media.title}
+                className="w-full rounded-none shadow-xl border border-zinc-700/80 object-cover aspect-[2/3]"
+              />
 
-                  {/* Badges under cover */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                    {releaseYear && (
-                      <span className="flex items-center gap-1 text-[11px] text-zinc-400 bg-zinc-900/80 px-2 py-0.5 rounded-none border border-zinc-800">
-                        <Calendar className="w-3 h-3" />
-                        {releaseYear}
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1 text-[11px] text-zinc-300 font-semibold bg-zinc-800/80 px-2 py-0.5 rounded-none border border-zinc-700/60">
-                      <Star className="w-3 h-3 fill-zinc-400 text-zinc-400" />
-                      <span>{media.vote_average ? media.vote_average.toFixed(1) : '8.0'}</span>
-                    </span>
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-none bg-zinc-800/50 text-zinc-400 border border-zinc-700/60">
-                      PG-13
-                    </span>
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-none bg-zinc-800/50 text-zinc-400 border border-zinc-700/60">
-                      Ultra HD 4K
-                    </span>
-                  </div>
-                </div>
+              {/* Meta tags under cover */}
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {releaseYear && (
+                  <span className="flex items-center gap-1 text-[11px] text-zinc-400 bg-zinc-900/80 px-2 py-0.5 rounded-none border border-zinc-800">
+                    <Calendar className="w-3 h-3" />
+                    {releaseYear}
+                  </span>
+                )}
+                {media.vote_average ? (
+                  <span className="flex items-center gap-1 text-[11px] text-zinc-300 font-semibold bg-zinc-800/80 px-2 py-0.5 rounded-none border border-zinc-700/60">
+                    <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                    <span>{media.vote_average.toFixed(1)}</span>
+                  </span>
+                ) : null}
+                {isWatched(media.id) && (
+                  <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-none border border-emerald-800/60">
+                    <Check className="w-2.5 h-2.5 stroke-[3]" />
+                    <span>Watched</span>
+                  </span>
+                )}
               </div>
+            </div>
 
-
-
-            <div className="md:col-span-3 space-y-4 flex flex-col justify-between">
+            {/* Movie Details Column */}
+            <div className="flex-1 space-y-4 flex flex-col justify-between min-w-0">
               <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {releaseYear && (
-                      <span className="flex items-center gap-1 text-xs text-zinc-400">
-                        <Calendar className="w-3.5 h-3.5" />
-                        {releaseYear}
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1 text-xs text-zinc-300 font-semibold bg-zinc-800/80 px-2 py-0.5 rounded-none border border-zinc-700/60">
-                      <Star className="w-3.5 h-3.5 fill-zinc-400 text-zinc-400" />
-                      <span>{media.vote_average ? media.vote_average.toFixed(1) : '8.0'}</span>
-                    </span>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-none bg-zinc-800/50 text-zinc-400 border border-zinc-700/60">
-                      PG-13
-                    </span>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-none bg-zinc-800/50 text-zinc-400 border border-zinc-700/60">
-                      Ultra HD 4K
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => toggleLike(media)}
-                    className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
-                      isLiked(media.id)
-                        ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-950/50'
-                        : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80'
-                    }`}
-                    title={isLiked(media.id) ? 'Liked! Click to remove from taste profile' : 'Like this title to tailor recommendations'}
-                  >
-                    <Heart className={`w-3.5 h-3.5 ${isLiked(media.id) ? 'fill-white text-white' : 'text-rose-400'}`} />
-                    <span>{isLiked(media.id) ? 'Liked' : 'Like'}</span>
-                  </button>
-                </div>
-
-                {/* Title: Transparent PNG Title Logo with Text Fallback */}
+                {/* Title Logo or Header */}
                 {!logoFailed && logoPath ? (
-                  <div className="h-14 sm:h-18 max-w-sm flex items-center my-1">
+                  <div className="h-14 sm:h-20 max-w-sm flex items-center my-1">
                     <img
                       key={logoPath}
                       src={getLogoUrl(logoPath, 'w500') || ''}
@@ -1049,12 +1079,13 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
                   <p className="text-xs sm:text-sm italic text-zinc-400 font-serif">"{media.tagline}"</p>
                 )}
 
+                {/* Genres */}
                 {media.genres && media.genres.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1.5 pt-1">
                     {media.genres.map((g) => (
                       <span
                         key={g.id}
-                        className="text-xs bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded-none border border-zinc-700"
+                        className="text-xs bg-zinc-800/80 text-zinc-300 px-2.5 py-0.5 rounded-none border border-zinc-700/80"
                       >
                         {g.name}
                       </span>
@@ -1062,34 +1093,79 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
                   </div>
                 )}
 
-                <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+                {/* Action Buttons Row */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 pb-2 border-b border-zinc-800/80">
+                  {/* Letterboxd 5-Star Rating Trigger */}
+                  <button
+                    onClick={() => setRatingModalMedia(media)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
+                      getMediaRating(media.id)
+                        ? 'bg-[#00E054] text-black border-[#00E054] shadow-md shadow-emerald-950/50'
+                        : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80 hover:border-[#00E054] hover:text-[#00E054]'
+                    }`}
+                    title="Rate with Letterboxd 5-Stars"
+                  >
+                    <Star className={`w-3.5 h-3.5 ${getMediaRating(media.id) ? 'fill-black' : 'text-zinc-400'}`} />
+                    <span>{getMediaRating(media.id) ? `${getMediaRating(media.id)}★ Rated` : 'Rate 5★'}</span>
+                  </button>
+
+                  {/* Watchlist Toggle */}
+                  <button
+                    onClick={() => toggleWatchlist(media)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
+                      isInWatchlist(media.id)
+                        ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-950/50'
+                        : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80 hover:border-amber-500 hover:text-amber-400'
+                    }`}
+                    title={isInWatchlist(media.id) ? 'In Watchlist! Click to remove' : 'Add to Watchlist'}
+                  >
+                    <Bookmark className={`w-3.5 h-3.5 ${isInWatchlist(media.id) ? 'fill-white stroke-[2.5]' : 'text-amber-400'}`} />
+                    <span>{isInWatchlist(media.id) ? 'In Watchlist' : 'Watchlist'}</span>
+                  </button>
+
+                  {/* Watched Toggle */}
+                  <button
+                    onClick={() => toggleWatched(media)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
+                      isWatched(media.id)
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-950/50'
+                        : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80 hover:border-emerald-500 hover:text-emerald-400'
+                    }`}
+                    title={isWatched(media.id) ? 'Marked as watched! Click to unmark' : 'Mark as watched to update taste profile'}
+                  >
+                    <Check className={`w-3.5 h-3.5 stroke-[2.5] ${isWatched(media.id) ? 'text-white' : 'text-emerald-400'}`} />
+                    <span>{isWatched(media.id) ? 'Watched' : 'Mark Watched'}</span>
+                  </button>
+
+                  {/* Like Toggle */}
+                  <button
+                    onClick={() => toggleLike(media)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
+                      isLiked(media.id)
+                        ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-950/50'
+                        : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80'
+                    }`}
+                    title={isLiked(media.id) ? 'Liked! Click to remove from taste profile' : 'Like this title to tailor recommendations'}
+                  >
+                    <Heart className={`w-3.5 h-3.5 ${isLiked(media.id) ? 'fill-white text-white' : 'text-rose-400'}`} />
+                    <span>{isLiked(media.id) ? 'Liked' : 'Like'}</span>
+                  </button>
+                </div>
+
+                {/* Overview */}
+                <p className="text-sm sm:text-base text-zinc-300 leading-relaxed pt-1">
                   {media.overview || 'No overview available for this title.'}
                 </p>
 
+                {/* Cast */}
                 {cast.length > 0 && (
-                  <p className="text-xs text-zinc-400 truncate pt-1">
-                    <span className="text-zinc-500 font-bold uppercase text-[10px] tracking-wider mr-1.5">
+                  <p className="text-xs sm:text-sm text-zinc-400 pt-1">
+                    <span className="text-zinc-500 font-bold uppercase text-[10px] tracking-wider mr-2">
                       Starring:
                     </span>
-                    <span className="text-zinc-300">{cast.slice(0, 5).join(', ')}</span>
+                    <span className="text-zinc-200">{cast.slice(0, 8).join(', ')}</span>
                   </p>
                 )}
-              </div>
-
-              {/* Bottom Quick Specs Grid */}
-              <div className="grid grid-cols-3 gap-2 text-xs pt-3 border-t border-zinc-800/80">
-                <div className="border border-zinc-800/80 bg-zinc-900/30 p-2.5 rounded-none">
-                  <span className="text-[10px] uppercase font-bold text-zinc-500 block">Type</span>
-                  <span className="font-semibold text-zinc-200 mt-0.5 block">Feature Film</span>
-                </div>
-                <div className="border border-zinc-800/80 bg-zinc-900/30 p-2.5 rounded-none">
-                  <span className="text-[10px] uppercase font-bold text-zinc-500 block">Audio / Subs</span>
-                  <span className="font-semibold text-zinc-200 mt-0.5 block">English [CC] · 5.1</span>
-                </div>
-                <div className="border border-zinc-800/80 bg-zinc-900/30 p-2.5 rounded-none">
-                  <span className="text-[10px] uppercase font-bold text-zinc-500 block">Server Engine</span>
-                  <span className="font-semibold text-zinc-200 mt-0.5 block">Vidbolt Cloud</span>
-                </div>
               </div>
             </div>
           </div>
@@ -1121,80 +1197,21 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
-                {relatedMedia.map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => handleSelectRelated(item)}
-                    className="bg-[#181818] rounded-none overflow-hidden border border-zinc-800 hover:border-zinc-500 hover:scale-[1.03] transition-all duration-300 cursor-pointer shadow-lg group flex flex-col"
-                  >
-                    <div className="relative aspect-[2/3] w-full bg-zinc-900 flex-shrink-0">
-                      <img
-                        src={getPosterUrl(item.poster_path)}
-                        alt={item.title}
-                        loading="lazy"
-                        className="w-full h-full object-cover rounded-none"
-                      />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <div className="w-10 h-10 rounded-none bg-white text-black flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
-                          <Play className="w-4 h-4 fill-black ml-0.5" />
-                        </div>
-                      </div>
-
-                      {/* Watched Badge top-left */}
-                      {isWatched(item.id) && (
-                        <div className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-emerald-600/95 text-white text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shadow backdrop-blur-sm border border-emerald-400/50">
-                          <Check className="w-2.5 h-2.5 stroke-[3]" />
-                          <span>Watched</span>
-                        </div>
-                      )}
-
-                      {/* Top-Right Quick Actions: Watched & Like */}
-                      <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleWatched(item);
-                          }}
-                          className={`w-7 h-7 rounded-none flex items-center justify-center transition-all cursor-pointer ${
-                            isWatched(item.id)
-                              ? 'bg-emerald-600 text-white border-emerald-400'
-                              : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
-                          } backdrop-blur-sm border border-white/20`}
-                          title={isWatched(item.id) ? 'Watched! Click to unmark' : 'Mark as watched'}
-                        >
-                          <Check className={`w-3.5 h-3.5 stroke-[2.5] ${isWatched(item.id) ? 'text-white' : ''}`} />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleLike(item);
-                          }}
-                          className={`w-7 h-7 rounded-none flex items-center justify-center transition-all cursor-pointer ${
-                            isLiked(item.id)
-                              ? 'bg-rose-600 text-white'
-                              : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
-                          } backdrop-blur-sm border border-white/20`}
-                          title={isLiked(item.id) ? 'Unlike' : 'Like this title'}
-                        >
-                          <Heart className={`w-3.5 h-3.5 ${isLiked(item.id) ? 'fill-white' : ''}`} />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="p-2.5 flex-grow flex flex-col justify-between">
-                      <h5 className="font-bold text-xs text-white truncate" title={item.title}>
-                        {item.title}
-                      </h5>
-                      <div className="flex items-center justify-between text-[11px] text-zinc-400 mt-1.5 pt-1 border-t border-zinc-800/40">
-                        <span className="flex items-center gap-1 text-amber-400 font-semibold">
-                          <Star className="w-2.5 h-2.5 fill-amber-400" />
-                          {item.vote_average ? item.vote_average.toFixed(1) : 'NR'}
-                        </span>
-                        <span className="uppercase text-[10px] tracking-wider text-zinc-500 font-semibold">
-                          {item.media_type === 'tv' ? 'TV Series' : 'Movie'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                {relatedMedia.map((item, index) => (
+                  <MediaCard
+                    key={`${item.id}-${index}`}
+                    item={item}
+                    onSelect={handleSelectRelated}
+                    isLiked={isLiked(item.id)}
+                    onToggleLike={() => toggleLike(item)}
+                    isWatched={isWatched(item.id)}
+                    onToggleWatched={() => toggleWatched(item)}
+                    isInWatchlist={isInWatchlist(item.id)}
+                    onToggleWatchlist={() => toggleWatchlist(item)}
+                    userRating={getMediaRating(item.id)}
+                    onOpenRatingModal={() => setRatingModalMedia(item)}
+                    className="w-full"
+                  />
                 ))}
               </div>
             )}
@@ -1203,6 +1220,13 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
       </div>
       </>
       )}
+
+      {/* Letterboxd 5-Star Rating Modal */}
+      <StarRatingModal
+        isOpen={!!ratingModalMedia}
+        onClose={() => setRatingModalMedia(null)}
+        media={ratingModalMedia}
+      />
     </div>
   );
 };

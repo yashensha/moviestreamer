@@ -25,10 +25,13 @@ import {
   Sliders,
   ShieldAlert,
   Cpu,
-  BarChart3
+  BarChart3,
+  Bookmark,
+  Check,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { computeUnifiedInteractionMatrix } from '../services/interactionMatrix';
+import { StarRatingModal } from './StarRatingModal';
 
 interface ProfilePageProps {
   onOpenItem?: (item: MediaItem) => void;
@@ -39,16 +42,18 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
   const watchHistory = useStreamStore((state) => state.watchHistory);
   const likedMedia = useStreamStore((state) => state.likedMedia);
   const userRatings = useStreamStore((state) => state.userRatings);
-  const removeFromHistory = useStreamStore((state) => state.removeFromHistory);
-  const removeUserRating = useStreamStore((state) => state.removeUserRating);
-  const clearHistory = useStreamStore((state) => state.clearHistory);
-  const toggleLike = useStreamStore((state) => state.toggleLike);
+  const watchlist = useStreamStore((state) => state.watchlist);
+  const watchedList = useStreamStore((state) => state.watchedList) || [];
+  const removeFromWatchlist = useStreamStore((state) => state.removeFromWatchlist);
+  const getMediaRating = useStreamStore((state) => state.getMediaRating);
 
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const openLoginModal = useAuthStore((state) => state.openLoginModal);
 
-  const [activeTab, setActiveTab] = useState<'all' | 'watched' | 'liked' | 'history' | 'matrix'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'watched' | 'watchlist' | 'liked' | 'history' | 'matrix'>('all');
+  const [ratingModalMedia, setRatingModalMedia] = useState<MediaItem | null>(null);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<MediaItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -177,9 +182,31 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
     return map;
   }, [userRatings]);
 
+  // Combined watched titles from watchedList and userRatings (de-duplicated)
+  const allWatchedItems = useMemo(() => {
+    const map = new Map<number, MediaItem>();
+    watchedList.forEach((w) => map.set(w.id, w));
+    userRatings.forEach((r) => {
+      if (!map.has(r.id)) {
+        map.set(r.id, {
+          id: r.id,
+          title: r.title,
+          overview: '',
+          poster_path: r.poster_path,
+          backdrop_path: r.backdrop_path ?? null,
+          media_type: r.type,
+          release_date: r.release_date || '',
+          vote_average: r.vote_average ?? 8.0,
+          genre_ids: r.genre_ids,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [watchedList, userRatings]);
+
   // Filtered & Sorted Watched items
   const filteredWatchedItems = useMemo(() => {
-    let list = [...watchHistory];
+    let list = [...allWatchedItems];
 
     if (watchedFilter === 'rated') {
       list = list.filter((item) => ratingsMap.has(item.id) && ratingsMap.get(item.id)?.rating);
@@ -208,11 +235,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
       list.sort((a, b) => a.title.localeCompare(b.title));
     } else {
       // 'recent'
-      list.sort((a, b) => b.updatedAt - a.updatedAt);
+      list.sort((a, b) => (b.id || 0) - (a.id || 0));
     }
 
     return list;
-  }, [watchHistory, watchedFilter, watchedSort, ratingsMap]);
+  }, [allWatchedItems, watchedFilter, watchedSort, ratingsMap]);
 
   // Letterboxd import stats
   const letterboxdCount = useMemo(() => {
@@ -440,7 +467,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
                   : 'bg-zinc-900/60 text-zinc-400 border-zinc-800 hover:text-white'
               }`}
             >
-              Overview ({watchHistory.length + likedMedia.length})
+              Overview ({watchHistory.length + likedMedia.length + watchlist.length})
             </button>
             <button
               onClick={() => setActiveTab('watched')}
@@ -452,6 +479,17 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
             >
               <Film className="w-3.5 h-3.5" />
               Watched Titles ({watchHistory.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('watchlist')}
+              className={`flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold transition cursor-pointer rounded-none border ${
+                activeTab === 'watchlist'
+                  ? 'bg-rose-600 text-white border-rose-500'
+                  : 'bg-zinc-900/60 text-zinc-400 border-zinc-800 hover:text-white'
+              }`}
+            >
+              <Bookmark className="w-3.5 h-3.5" />
+              Watchlist ({watchlist.length})
             </button>
             <button
               onClick={() => setActiveTab('liked')}
@@ -499,7 +537,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
                 </div>
 
                 {/* Filter and Sort Bar */}
-                {watchHistory.length > 0 && (
+                {allWatchedItems.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1">
                       <button
@@ -508,7 +546,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
                           watchedFilter === 'all' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
                         }`}
                       >
-                        All ({watchHistory.length})
+                        All ({allWatchedItems.length})
                       </button>
                       <button
                         onClick={() => setWatchedFilter('rated')}
@@ -555,7 +593,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
                 )}
               </div>
 
-              {watchHistory.length === 0 ? (
+              {allWatchedItems.length === 0 ? (
                 <div className="p-8 text-center bg-zinc-900/30 border border-dashed border-zinc-800 space-y-3">
                   <Film className="w-10 h-10 text-zinc-600 mx-auto" />
                   <div className="space-y-1">
@@ -584,15 +622,16 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
                   {filteredWatchedItems.map((item) => {
                     const ratingInfo = ratingsMap.get(item.id);
                     const isLetterboxd = ratingInfo?.source === 'letterboxd';
+                    const mediaType = item.media_type || 'movie';
 
                     return (
                       <div
-                        key={`${item.type}-${item.id}`}
+                        key={`${mediaType}-${item.id}`}
                         className="group relative bg-[#181818] border border-zinc-800 hover:border-zinc-500 transition-all duration-300 flex flex-col rounded-none overflow-hidden"
                       >
                         {/* Poster Frame */}
                         <div
-                          onClick={() => handlePlayItem(item.type, item.id, item.season, item.episode)}
+                          onClick={() => handlePlayItem(mediaType, item.id, item.season, item.episode)}
                           className="relative aspect-[2/3] w-full bg-zinc-900 cursor-pointer overflow-hidden"
                         >
                           <img
@@ -615,7 +654,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
                             </div>
                           ) : (
                             <div className="absolute top-2 left-2 bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold text-zinc-300 uppercase">
-                              {item.type === 'tv' ? 'TV' : 'Film'}
+                              {mediaType === 'tv' ? 'TV' : 'Film'}
                             </div>
                           )}
 
@@ -642,7 +681,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
                         <div className="p-2.5 flex-grow flex flex-col justify-between space-y-1.5">
                           <div>
                             <h4
-                              onClick={() => handlePlayItem(item.type, item.id, item.season, item.episode)}
+                              onClick={() => handlePlayItem(mediaType, item.id, item.season, item.episode)}
                               className="font-bold text-xs text-white truncate cursor-pointer hover:text-rose-400"
                               title={item.title}
                             >
@@ -652,7 +691,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
                               <span className="text-zinc-500">
                                 {item.release_date ? new Date(item.release_date).getFullYear() : ''}
                               </span>
-                              {item.type === 'tv' && item.season && item.episode ? (
+                              {mediaType === 'tv' && item.season && item.episode ? (
                                 <span className="text-[10px] text-zinc-400">
                                   S{item.season} E{item.episode}
                                 </span>
@@ -666,26 +705,151 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
 
                           <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60">
                             <button
-                              onClick={() => handlePlayItem(item.type, item.id, item.season, item.episode)}
+                              onClick={() => handlePlayItem(mediaType, item.id, item.season, item.episode)}
                               className="text-[11px] font-bold text-white hover:text-rose-400 flex items-center gap-1 transition cursor-pointer"
                             >
                               <Play className="w-2.5 h-2.5 fill-current" /> Watch
                             </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => setRatingModalMedia(item as any)}
+                                className={`p-1 text-xs transition cursor-pointer ${
+                                  ratingInfo?.rating ? 'text-[#00E054]' : 'text-zinc-500 hover:text-[#00E054]'
+                                }`}
+                                title="Rate with Letterboxd 5-Stars"
+                              >
+                                <Star className={`w-3.5 h-3.5 ${ratingInfo?.rating ? 'fill-[#00E054]' : ''}`} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  removeFromHistory(item.id);
+                                  removeUserRating(item.id);
+                                }}
+                                className="text-zinc-500 hover:text-rose-400 p-1 transition cursor-pointer"
+                                title="Remove from watched"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Section: Saved Watchlist */}
+          {(activeTab === 'all' || activeTab === 'watchlist') && (
+            <section className="space-y-4 pt-4 border-t border-zinc-800/80">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Bookmark className="w-5 h-5 text-amber-500 fill-amber-500/20" />
+                  <h2 className="text-xl font-bold text-white">Saved Watchlist</h2>
+                  <span className="text-xs text-zinc-500 font-normal">({watchlist.length})</span>
+                </div>
+              </div>
+
+              {watchlist.length === 0 ? (
+                <div className="p-8 text-center bg-zinc-900/30 border border-dashed border-zinc-800 space-y-3">
+                  <Bookmark className="w-10 h-10 text-zinc-600 mx-auto" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-zinc-400">Your Watchlist is empty</p>
+                    <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                      Click the bookmark icon on any card or detail page to save titles you plan to stream next.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+                  {watchlist.map((item) => (
+                    <div
+                      key={`watchlist-${item.id}`}
+                      className="group relative bg-[#181818] border border-zinc-800 hover:border-zinc-500 transition-all duration-300 flex flex-col rounded-none overflow-hidden"
+                    >
+                      <div
+                        onClick={() => handleSelectItem(item)}
+                        className="relative aspect-[2/3] w-full bg-zinc-900 cursor-pointer overflow-hidden"
+                      >
+                        <img
+                          src={getPosterUrl(item.poster_path)}
+                          alt={item.title}
+                          loading="lazy"
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <div className="w-10 h-10 rounded-none bg-white text-black flex items-center justify-center shadow-lg">
+                            <Play className="w-5 h-5 fill-black ml-0.5" />
+                          </div>
+                        </div>
+
+                        {/* Watchlist Badge */}
+                        <div className="absolute top-2 left-2 bg-amber-600/90 text-white px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow">
+                          <Bookmark className="w-2.5 h-2.5 fill-white stroke-[2.5]" />
+                          <span>Watchlist</span>
+                        </div>
+
+                        {/* Letterboxd Rating Badge if present */}
+                        {getMediaRating(item.id) && (
+                          <div className="absolute bottom-2 left-2 bg-black/85 border border-[#00E054] text-[#00E054] px-1.5 py-0.5 text-[10px] font-black flex items-center gap-1 shadow">
+                            <Star className="w-2.5 h-2.5 fill-[#00E054]" />
+                            <span>{getMediaRating(item.id)}★</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="p-2.5 flex-grow flex flex-col justify-between space-y-1.5">
+                        <div>
+                          <h4
+                            onClick={() => handleSelectItem(item)}
+                            className="font-bold text-xs text-white truncate cursor-pointer hover:text-rose-400"
+                            title={item.title}
+                          >
+                            {item.title}
+                          </h4>
+                          <div className="flex items-center justify-between text-[11px] text-zinc-400 mt-1">
+                            <span className="text-zinc-500">
+                              {item.release_date ? new Date(item.release_date).getFullYear() : ''}
+                            </span>
+                            <span className="text-[10px] uppercase font-semibold text-zinc-400">
+                              {item.media_type === 'tv' ? 'Series' : 'Film'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60">
+                          <button
+                            onClick={() => {
+                              toggleWatched(item);
+                              removeFromWatchlist(item.id);
+                            }}
+                            className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition cursor-pointer"
+                            title="Mark as Finished / Watched"
+                          >
+                            <Check className="w-3 h-3 stroke-[2.5]" /> Watched
+                          </button>
+                          <div className="flex items-center gap-1">
                             <button
-                              onClick={() => {
-                                removeFromHistory(item.id);
-                                removeUserRating(item.id);
-                              }}
+                              onClick={() => setRatingModalMedia(item)}
+                              className="text-zinc-500 hover:text-[#00E054] p-1 transition cursor-pointer"
+                              title="Rate with Letterboxd 5-Stars"
+                            >
+                              <Star className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => removeFromWatchlist(item.id)}
                               className="text-zinc-500 hover:text-rose-400 p-1 transition cursor-pointer"
-                              title="Remove from watched"
+                              title="Remove from watchlist"
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               )}
             </section>
@@ -776,101 +940,128 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
           )}
 
           {/* Section: Continue Watching */}
-          {(activeTab === 'all' || activeTab === 'history') && (
-            <section className="space-y-4 pt-4">
-              <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-rose-500" />
-                  <span>Continue Watching & Streaming Sessions</span>
-                  <span className="text-xs text-zinc-500 font-normal">
-                    ({watchHistory.filter((i) => i.type === 'tv' || (i.progressSeconds && i.progressSeconds < (i.durationSeconds || 7200))).length})
-                  </span>
-                </h2>
-              </div>
+          {(activeTab === 'all' || activeTab === 'history') && (() => {
+            const continueWatchingItems = watchHistory.filter((i) => !isWatched(i.id));
 
-              {watchHistory.length === 0 ? (
-                <div className="p-8 text-center bg-zinc-900/30 border border-dashed border-zinc-800 space-y-2">
-                  <Clock className="w-8 h-8 text-zinc-600 mx-auto" />
-                  <p className="text-sm font-semibold text-zinc-400">No active streaming session</p>
-                  <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                    Any movie or series you stream will appear here so you can easily resume right where you left off.
-                  </p>
+            return (
+              <section className="space-y-4 pt-4">
+                <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-rose-500" />
+                    <span>Continue Watching & Streaming Sessions</span>
+                    <span className="text-xs text-zinc-500 font-normal">
+                      ({continueWatchingItems.length})
+                    </span>
+                  </h2>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {watchHistory.slice(0, 8).map((item) => (
-                    <div
-                      key={`continue-${item.type}-${item.id}`}
-                      className="group bg-[#181818] border border-zinc-800 hover:border-zinc-600 transition-all duration-300 p-3.5 flex flex-col justify-between space-y-3"
-                    >
-                      <div className="flex gap-3">
-                        {/* Thumbnail / Poster */}
-                        <div
-                          onClick={() => handlePlayItem(item.type, item.id, item.season, item.episode)}
-                          className="w-20 sm:w-24 aspect-[2/3] bg-zinc-900 flex-shrink-0 cursor-pointer relative overflow-hidden group-hover:scale-102 transition"
-                        >
-                          <img
-                            src={getPosterUrl(item.poster_path)}
-                            alt={item.title}
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                            <Play className="w-5 h-5 fill-white text-white" />
-                          </div>
-                        </div>
 
-                        {/* Details */}
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <span className="text-[10px] uppercase font-bold text-rose-400 tracking-wider">
-                            {item.type === 'tv' ? 'TV Series' : 'Feature Film'}
-                          </span>
-                          <h4
+                {continueWatchingItems.length === 0 ? (
+                  <div className="p-8 text-center bg-zinc-900/30 border border-dashed border-zinc-800 space-y-2">
+                    <Clock className="w-8 h-8 text-zinc-600 mx-auto" />
+                    <p className="text-sm font-semibold text-zinc-400">No active streaming session</p>
+                    <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                      Any movie or series you stream will appear here so you can easily resume right where you left off.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {continueWatchingItems.slice(0, 12).map((item) => (
+                      <div
+                        key={`continue-${item.type}-${item.id}`}
+                        className="group bg-[#181818] border border-zinc-800 hover:border-zinc-600 transition-all duration-300 p-3.5 flex flex-col justify-between space-y-3"
+                      >
+                        <div className="flex gap-3">
+                          {/* Thumbnail / Poster */}
+                          <div
                             onClick={() => handlePlayItem(item.type, item.id, item.season, item.episode)}
-                            className="font-bold text-sm text-white truncate cursor-pointer hover:text-rose-400 transition"
-                            title={item.title}
+                            className="w-20 sm:w-24 aspect-[2/3] bg-zinc-900 flex-shrink-0 cursor-pointer relative overflow-hidden group-hover:scale-102 transition"
                           >
-                            {item.title}
-                          </h4>
-
-                          {item.type === 'tv' && item.season && item.episode ? (
-                            <div className="text-xs font-semibold text-zinc-200 bg-zinc-800/90 border border-zinc-700/80 px-2 py-1 inline-block mt-1">
-                              Season {item.season}, Ep {item.episode}
+                            <img
+                              src={getPosterUrl(item.poster_path)}
+                              alt={item.title}
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                              <Play className="w-5 h-5 fill-white text-white" />
                             </div>
-                          ) : (
-                            <div className="text-xs text-zinc-400 mt-1">
-                              {item.release_date ? new Date(item.release_date).getFullYear() : 'Movie'}
-                            </div>
-                          )}
+                          </div>
 
-                          <div className="text-[11px] text-zinc-500 pt-1">
-                            Updated {new Date(item.updatedAt).toLocaleDateString()}
+                          {/* Details */}
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-rose-400 tracking-wider">
+                              {item.type === 'tv' ? 'TV Series' : 'Feature Film'}
+                            </span>
+                            <h4
+                              onClick={() => handlePlayItem(item.type, item.id, item.season, item.episode)}
+                              className="font-bold text-sm text-white truncate cursor-pointer hover:text-rose-400 transition"
+                              title={item.title}
+                            >
+                              {item.title}
+                            </h4>
+
+                            {item.type === 'tv' && item.season && item.episode ? (
+                              <div className="space-y-1">
+                                <div className="text-xs font-semibold text-zinc-200 bg-zinc-800/90 border border-zinc-700/80 px-2 py-1 inline-block mt-1">
+                                  Season {item.season}, Ep {item.episode}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-xs text-zinc-400 mt-1">
+                                {item.release_date ? new Date(item.release_date).getFullYear() : 'Movie'}
+                              </div>
+                            )}
+
+                            <div className="text-[11px] text-zinc-500 pt-1">
+                              Updated {new Date(item.updatedAt).toLocaleDateString()}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Card Action Buttons */}
-                      <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80">
-                        <button
-                          onClick={() => handlePlayItem(item.type, item.id, item.season, item.episode)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-white hover:bg-zinc-200 text-black font-bold text-xs transition cursor-pointer"
-                        >
-                          <Play className="w-3.5 h-3.5 fill-black" />
-                          <span>{item.type === 'tv' ? 'Resume' : 'Watch'}</span>
-                        </button>
-                        <button
-                          onClick={() => removeFromHistory(item.id)}
-                          className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-rose-400 border border-zinc-700 transition cursor-pointer"
-                          title="Remove from history"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {/* Card Action Buttons */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80">
+                          <button
+                            onClick={() => handlePlayItem(item.type, item.id, item.season, item.episode)}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-white hover:bg-zinc-200 text-black font-bold text-xs transition cursor-pointer"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-black" />
+                            <span>{item.type === 'tv' ? 'Resume' : 'Watch'}</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              markAsWatched({
+                                id: item.id,
+                                title: item.title,
+                                poster_path: item.poster_path,
+                                backdrop_path: item.backdrop_path,
+                                overview: item.overview || '',
+                                media_type: item.type,
+                                release_date: item.release_date || '',
+                                vote_average: item.vote_average ?? 8.0,
+                                number_of_seasons: item.number_of_seasons,
+                              });
+                            }}
+                            className="px-2.5 py-1.5 bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-xs transition cursor-pointer flex items-center gap-1 border border-emerald-400/50"
+                            title="Mark as Watched & Remove from Continue Watching"
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            <span>Watched</span>
+                          </button>
+                          <button
+                            onClick={() => removeFromHistory(item.id)}
+                            className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-rose-400 border border-zinc-700 transition cursor-pointer"
+                            title="Remove from history"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })()}
+
 
           {/* Section: Unified Interaction Matrix & Weighting Engine (Step 2) */}
           {(activeTab === 'all' || activeTab === 'matrix') && (
@@ -1275,6 +1466,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
       <AddWatchedModal
         isOpen={isAddWatchedOpen}
         onClose={() => setIsAddWatchedOpen(false)}
+      />
+
+      {/* 5-Star Letterboxd Style Rating Modal */}
+      <StarRatingModal
+        isOpen={!!ratingModalMedia}
+        onClose={() => setRatingModalMedia(null)}
+        media={ratingModalMedia}
       />
     </div>
   );
