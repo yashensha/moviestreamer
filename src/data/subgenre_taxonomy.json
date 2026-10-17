@@ -1,0 +1,704 @@
+{
+  "generatedAt": "2026-10-17T19:12:22.761Z",
+  "totalCanonicalTags": 200,
+  "clusters": {
+    "Cyberpunk & Tech Dystopia": [
+      "cyberpunk",
+      "artificial intelligence",
+      "ai",
+      "virtual reality",
+      "dystopia",
+      "dystopian",
+      "hacker",
+      "android",
+      "cyborg",
+      "futuristic",
+      "transhumanism"
+    ],
+    "Psychological & Mind-Bending": [
+      "mindfuck",
+      "mind-bending",
+      "psychological",
+      "psychological thriller",
+      "unreliable narrator",
+      "paranoia",
+      "memory loss",
+      "dream",
+      "hallucinations",
+      "multiple personalities"
+    ],
+    "Time & Dimensional Sci-Fi": [
+      "time travel",
+      "alternate reality",
+      "parallel universe",
+      "multiverse",
+      "time loop",
+      "wormhole",
+      "space travel",
+      "space opera",
+      "alien",
+      "aliens"
+    ],
+    "Neo-Noir & Crime Underworld": [
+      "neo-noir",
+      "noir",
+      "investigation",
+      "detective",
+      "murder mystery",
+      "whodunit",
+      "corrupt cop",
+      "gangster",
+      "mob",
+      "organized crime",
+      "heist"
+    ],
+    "Dark Satire & Absurdist": [
+      "dark comedy",
+      "black comedy",
+      "satire",
+      "satirical",
+      "cynical",
+      "absurd",
+      "ironic",
+      "parody"
+    ],
+    "Survival & High Tension": [
+      "survival",
+      "claustrophobic",
+      "post-apocalyptic",
+      "isolation",
+      "kidnapping",
+      "hostage",
+      "suspense",
+      "revenge",
+      "cat and mouse"
+    ],
+    "Spooky & Supernatural Horror": [
+      "supernatural",
+      "haunted house",
+      "demon",
+      "ghost",
+      "cult",
+      "folk horror",
+      "slasher",
+      "creature feature",
+      "monster",
+      "zombie",
+      "zombies",
+      "body horror"
+    ],
+    "Coming of Age & Intimate Drama": [
+      "coming of age",
+      "adolescence",
+      "high school",
+      "friendship",
+      "bittersweet",
+      "philosophical",
+      "existential",
+      "melancholy",
+      "heartwarming"
+    ]
+  },
+  "topThematicTags": [
+    {
+      "tag": "sci-fi",
+      "count": 11457
+    },
+    {
+      "tag": "atmospheric",
+      "count": 10088
+    },
+    {
+      "tag": "action",
+      "count": 9344
+    },
+    {
+      "tag": "comedy",
+      "count": 9273
+    },
+    {
+      "tag": "funny",
+      "count": 8087
+    },
+    {
+      "tag": "surreal",
+      "count": 7479
+    },
+    {
+      "tag": "visually appealing",
+      "count": 7253
+    },
+    {
+      "tag": "based on a book",
+      "count": 6731
+    },
+    {
+      "tag": "twist ending",
+      "count": 6600
+    },
+    {
+      "tag": "romance",
+      "count": 6228
+    },
+    {
+      "tag": "dark comedy",
+      "count": 6153
+    },
+    {
+      "tag": "thought-provoking",
+      "count": 5999
+    },
+    {
+      "tag": "dystopia",
+      "count": 5713
+    },
+    {
+      "tag": "violence",
+      "count": 5483
+    },
+    {
+      "tag": "murder",
+      "count": 5238
+    },
+    {
+      "tag": "social commentary",
+      "count": 5199
+    },
+    {
+      "tag": "fantasy",
+      "count": 5154
+    },
+    {
+      "tag": "thriller",
+      "count": 5050
+    },
+    {
+      "tag": "quirky",
+      "count": 4954
+    },
+    {
+      "tag": "stylized",
+      "count": 4948
+    },
+    {
+      "tag": "adventure",
+      "count": 4860
+    },
+    {
+      "tag": "psychology",
+      "count": 4847
+    },
+    {
+      "tag": "dark",
+      "count": 4821
+    },
+    {
+      "tag": "time travel",
+      "count": 4740
+    },
+    {
+      "tag": "revenge",
+      "count": 4722
+    },
+    {
+      "tag": "coming of age",
+      "count": 4494
+    },
+    {
+      "tag": "horror",
+      "count": 4440
+    },
+    {
+      "tag": "drama",
+      "count": 4406
+    },
+    {
+      "tag": "friendship",
+      "count": 4391
+    },
+    {
+      "tag": "suspense",
+      "count": 4382
+    },
+    {
+      "tag": "nudity (topless)",
+      "count": 4210
+    },
+    {
+      "tag": "psychological",
+      "count": 4081
+    },
+    {
+      "tag": "black comedy",
+      "count": 4071
+    },
+    {
+      "tag": "disturbing",
+      "count": 4053
+    },
+    {
+      "tag": "animation",
+      "count": 4044
+    },
+    {
+      "tag": "space",
+      "count": 3971
+    },
+    {
+      "tag": "superhero",
+      "count": 3966
+    },
+    {
+      "tag": "bd-r",
+      "count": 3966
+    },
+    {
+      "tag": "woman director",
+      "count": 3911
+    },
+    {
+      "tag": "great soundtrack",
+      "count": 3905
+    },
+    {
+      "tag": "cult film",
+      "count": 3883
+    },
+    {
+      "tag": "based on a true story",
+      "count": 3801
+    },
+    {
+      "tag": "music",
+      "count": 3701
+    },
+    {
+      "tag": "mystery",
+      "count": 3661
+    },
+    {
+      "tag": "aliens",
+      "count": 3642
+    },
+    {
+      "tag": "satire",
+      "count": 3572
+    },
+    {
+      "tag": "predictable",
+      "count": 3464
+    },
+    {
+      "tag": "mindfuck",
+      "count": 3457
+    },
+    {
+      "tag": "true story",
+      "count": 3446
+    },
+    {
+      "tag": "great acting",
+      "count": 3414
+    },
+    {
+      "tag": "musical",
+      "count": 3412
+    },
+    {
+      "tag": "drugs",
+      "count": 3405
+    },
+    {
+      "tag": "independent film",
+      "count": 3227
+    },
+    {
+      "tag": "crime",
+      "count": 3108
+    },
+    {
+      "tag": "family",
+      "count": 3043
+    },
+    {
+      "tag": "world war ii",
+      "count": 2929
+    },
+    {
+      "tag": "post-apocalyptic",
+      "count": 2881
+    },
+    {
+      "tag": "love",
+      "count": 2815
+    },
+    {
+      "tag": "war",
+      "count": 2781
+    },
+    {
+      "tag": "serial killer",
+      "count": 2763
+    },
+    {
+      "tag": "dreamlike",
+      "count": 2759
+    },
+    {
+      "tag": "bittersweet",
+      "count": 2757
+    },
+    {
+      "tag": "high school",
+      "count": 2704
+    },
+    {
+      "tag": "mental illness",
+      "count": 2701
+    },
+    {
+      "tag": "magic",
+      "count": 2693
+    },
+    {
+      "tag": "sequel",
+      "count": 2681
+    },
+    {
+      "tag": "artificial intelligence",
+      "count": 2651
+    },
+    {
+      "tag": "tense",
+      "count": 2643
+    },
+    {
+      "tag": "disney",
+      "count": 2584
+    },
+    {
+      "tag": "death",
+      "count": 2568
+    },
+    {
+      "tag": "future",
+      "count": 2566
+    },
+    {
+      "tag": "survival",
+      "count": 2461
+    },
+    {
+      "tag": "new york city",
+      "count": 2427
+    },
+    {
+      "tag": "police",
+      "count": 2421
+    },
+    {
+      "tag": "politics",
+      "count": 2414
+    },
+    {
+      "tag": "plot twist",
+      "count": 2396
+    },
+    {
+      "tag": "martial arts",
+      "count": 2389
+    },
+    {
+      "tag": "inspirational",
+      "count": 2380
+    },
+    {
+      "tag": "history",
+      "count": 2337
+    },
+    {
+      "tag": "alternate reality",
+      "count": 2320
+    },
+    {
+      "tag": "gore",
+      "count": 2299
+    },
+    {
+      "tag": "emotional",
+      "count": 2289
+    },
+    {
+      "tag": "philosophical",
+      "count": 2204
+    },
+    {
+      "tag": "biography",
+      "count": 2175
+    },
+    {
+      "tag": "religion",
+      "count": 2158
+    },
+    {
+      "tag": "witty",
+      "count": 2144
+    },
+    {
+      "tag": "imdb top 250",
+      "count": 2112
+    },
+    {
+      "tag": "nonlinear",
+      "count": 2097
+    },
+    {
+      "tag": "soundtrack",
+      "count": 2095
+    },
+    {
+      "tag": "philosophy",
+      "count": 2088
+    },
+    {
+      "tag": "gay",
+      "count": 2067
+    },
+    {
+      "tag": "visually stunning",
+      "count": 2059
+    },
+    {
+      "tag": "anime",
+      "count": 2029
+    },
+    {
+      "tag": "parody",
+      "count": 2006
+    },
+    {
+      "tag": "slow",
+      "count": 1999
+    },
+    {
+      "tag": "sex",
+      "count": 1980
+    },
+    {
+      "tag": "marvel",
+      "count": 1966
+    },
+    {
+      "tag": "documentary",
+      "count": 1950
+    },
+    {
+      "tag": "suicide",
+      "count": 1945
+    },
+    {
+      "tag": "black and white",
+      "count": 1939
+    },
+    {
+      "tag": "beautiful",
+      "count": 1913
+    },
+    {
+      "tag": "intelligent",
+      "count": 1892
+    },
+    {
+      "tag": "comic book",
+      "count": 1877
+    },
+    {
+      "tag": "rape",
+      "count": 1847
+    },
+    {
+      "tag": "strong female lead",
+      "count": 1837
+    },
+    {
+      "tag": "christmas",
+      "count": 1808
+    },
+    {
+      "tag": "intense",
+      "count": 1759
+    },
+    {
+      "tag": "surrealism",
+      "count": 1752
+    },
+    {
+      "tag": "japan",
+      "count": 1741
+    },
+    {
+      "tag": "dark humor",
+      "count": 1735
+    },
+    {
+      "tag": "espionage",
+      "count": 1726
+    },
+    {
+      "tag": "historical",
+      "count": 1723
+    },
+    {
+      "tag": "remake",
+      "count": 1719
+    },
+    {
+      "tag": "racism",
+      "count": 1718
+    },
+    {
+      "tag": "zombies",
+      "count": 1709
+    },
+    {
+      "tag": "corruption",
+      "count": 1701
+    },
+    {
+      "tag": "british",
+      "count": 1700
+    },
+    {
+      "tag": "blood",
+      "count": 1687
+    },
+    {
+      "tag": "touching",
+      "count": 1685
+    },
+    {
+      "tag": "kidnapping",
+      "count": 1684
+    },
+    {
+      "tag": "epic",
+      "count": 1682
+    },
+    {
+      "tag": "heist",
+      "count": 1675
+    },
+    {
+      "tag": "quentin tarantino",
+      "count": 1675
+    },
+    {
+      "tag": "organized crime",
+      "count": 1641
+    },
+    {
+      "tag": "loneliness",
+      "count": 1635
+    },
+    {
+      "tag": "science fiction",
+      "count": 1634
+    },
+    {
+      "tag": "pixar",
+      "count": 1627
+    },
+    {
+      "tag": "nudity (full frontal)",
+      "count": 1613
+    },
+    {
+      "tag": "original",
+      "count": 1604
+    },
+    {
+      "tag": "prison",
+      "count": 1595
+    },
+    {
+      "tag": "weird",
+      "count": 1571
+    },
+    {
+      "tag": "conspiracy",
+      "count": 1568
+    },
+    {
+      "tag": "violent",
+      "count": 1555
+    },
+    {
+      "tag": "humorous",
+      "count": 1554
+    },
+    {
+      "tag": "small town",
+      "count": 1547
+    },
+    {
+      "tag": "cyberpunk",
+      "count": 1540
+    },
+    {
+      "tag": "supernatural",
+      "count": 1525
+    },
+    {
+      "tag": "father daughter relationship",
+      "count": 1517
+    },
+    {
+      "tag": "futuristic",
+      "count": 1516
+    },
+    {
+      "tag": "multiple storylines",
+      "count": 1514
+    },
+    {
+      "tag": "based on novel or book",
+      "count": 1508
+    },
+    {
+      "tag": "heartwarming",
+      "count": 1507
+    },
+    {
+      "tag": "dialogue",
+      "count": 1504
+    },
+    {
+      "tag": "clever",
+      "count": 1497
+    },
+    {
+      "tag": "robots",
+      "count": 1478
+    },
+    {
+      "tag": "military",
+      "count": 1471
+    },
+    {
+      "tag": "hilarious",
+      "count": 1469
+    },
+    {
+      "tag": "1980s",
+      "count": 1446
+    },
+    {
+      "tag": "spy",
+      "count": 1438
+    },
+    {
+      "tag": "sexuality",
+      "count": 1425
+    }
+  ]
+}

@@ -16,7 +16,7 @@ import {
   Heart,
   Compass,
   Film,
-  Zap,
+  Check,
 } from 'lucide-react';
 
 interface TailoredRecommendationsRowProps {
@@ -36,6 +36,8 @@ const RecommendationSubRow: React.FC<{
   onSelect: (item: MediaItem) => void;
   isLiked: (id: number) => boolean;
   toggleLike: (item: MediaItem) => void;
+  isWatched: (id: number) => boolean;
+  toggleWatched: (item: MediaItem) => void;
 }> = ({
   title,
   badgeLabel,
@@ -46,6 +48,8 @@ const RecommendationSubRow: React.FC<{
   onSelect,
   isLiked,
   toggleLike,
+  isWatched,
+  toggleWatched,
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -102,6 +106,7 @@ const RecommendationSubRow: React.FC<{
             const poster = getPosterUrl(item.poster_path);
             const year = item.release_date ? new Date(item.release_date).getFullYear() : '';
             const liked = isLiked(item.id);
+            const watched = isWatched(item.id);
             const matchPct = Math.round(Math.min(99, Math.max(78, scored.hybridScore * 100)));
 
             return (
@@ -127,33 +132,58 @@ const RecommendationSubRow: React.FC<{
                     </div>
                   </div>
 
-                  {/* Hybrid Match Pill Badge */}
+                  {/* Badges: Watched (if watched) & Hybrid Match */}
                   <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 items-start">
+                    {watched && (
+                      <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white px-1.5 py-0.5 rounded-none shadow backdrop-blur-sm flex items-center gap-1 border border-emerald-400/50">
+                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        <span>Watched</span>
+                      </span>
+                    )}
                     <span className="text-[10px] font-black uppercase tracking-wider bg-rose-600/90 text-white px-1.5 py-0.5 rounded-none shadow backdrop-blur-sm">
                       {matchPct}% Match
                     </span>
-                    {scored.attributionTags.length > 0 && (
-                      <span className="text-[9px] font-bold bg-black/75 text-zinc-200 border border-white/20 px-1 py-0.2 backdrop-blur-sm truncate max-w-[120px]">
-                        {scored.attributionTags[0]}
+                    {scored.attributionTags.slice(0, 2).map((tag, tIdx) => (
+                      <span
+                        key={tIdx}
+                        className="text-[9px] font-bold bg-black/85 text-zinc-200 border border-white/20 px-1.5 py-0.5 backdrop-blur-sm truncate max-w-[130px] rounded-none capitalize"
+                      >
+                        {tag}
                       </span>
-                    )}
+                    ))}
                   </div>
 
-                  {/* Quick Like / Heart button on card */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleLike(item);
-                    }}
-                    className={`absolute top-2 right-2 z-20 w-7 h-7 rounded-none flex items-center justify-center transition-all ${
-                      liked
-                        ? 'bg-rose-600 text-white'
-                        : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
-                    } backdrop-blur-sm border border-white/20`}
-                    title={liked ? 'Unlike' : 'Like this title'}
-                  >
-                    <Heart className={`w-3.5 h-3.5 ${liked ? 'fill-white' : ''}`} />
-                  </button>
+                  {/* Top-Right Quick Actions: Watched & Like */}
+                  <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleWatched(item);
+                      }}
+                      className={`w-7 h-7 rounded-none flex items-center justify-center transition-all cursor-pointer ${
+                        watched
+                          ? 'bg-emerald-600 text-white border-emerald-400'
+                          : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
+                      } backdrop-blur-sm border border-white/20`}
+                      title={watched ? 'Watched! Click to unmark' : 'Mark as watched'}
+                    >
+                      <Check className={`w-3.5 h-3.5 stroke-[2.5] ${watched ? 'text-white' : ''}`} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleLike(item);
+                      }}
+                      className={`w-7 h-7 rounded-none flex items-center justify-center transition-all cursor-pointer ${
+                        liked
+                          ? 'bg-rose-600 text-white'
+                          : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
+                      } backdrop-blur-sm border border-white/20`}
+                      title={liked ? 'Unlike' : 'Like this title'}
+                    >
+                      <Heart className={`w-3.5 h-3.5 ${liked ? 'fill-white' : ''}`} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Metadata Card Footer */}
@@ -202,6 +232,8 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
   const userRatings = useStreamStore((state) => state.userRatings);
   const toggleLike = useStreamStore((state) => state.toggleLike);
   const isLiked = useStreamStore((state) => state.isLiked);
+  const toggleWatched = useStreamStore((state) => state.toggleWatched);
+  const isWatched = useStreamStore((state) => state.isWatched);
 
   const [pipelineData, setPipelineData] = useState<CuratedRecommendationRows>({
     topPicks: [],
@@ -287,6 +319,8 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
         onSelect={onSelect}
         isLiked={isLiked}
         toggleLike={toggleLike}
+        isWatched={isWatched}
+        toggleWatched={toggleWatched}
       />
 
       {/* Row 2: Because You Watched [Title] (Highest single-seed similarity) */}
@@ -301,6 +335,8 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
           onSelect={onSelect}
           isLiked={isLiked}
           toggleLike={toggleLike}
+          isWatched={isWatched}
+          toggleWatched={toggleWatched}
         />
       )}
 
@@ -316,6 +352,8 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
           onSelect={onSelect}
           isLiked={isLiked}
           toggleLike={toggleLike}
+          isWatched={isWatched}
+          toggleWatched={toggleWatched}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import type { MediaItem } from '../types/movie';
 import { getPosterUrl } from '../services/tmdb';
-import { ChevronLeft, ChevronRight, Play, Star, Heart } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Play, Star, Heart, Check } from 'lucide-react';
 import { useStreamStore } from '../store/useStreamStore';
 
 interface MovieRowProps {
@@ -20,6 +20,8 @@ export const MovieRow: React.FC<MovieRowProps> = ({
   const rowRef = useRef<HTMLDivElement>(null);
   const toggleLike = useStreamStore((state) => state.toggleLike);
   const isLiked = useStreamStore((state) => state.isLiked);
+  const toggleWatched = useStreamStore((state) => state.toggleWatched);
+  const isWatched = useStreamStore((state) => state.isWatched);
 
   const scroll = (direction: 'left' | 'right') => {
     if (rowRef.current) {
@@ -97,26 +99,50 @@ export const MovieRow: React.FC<MovieRowProps> = ({
                     className="w-full h-full object-cover transition-transform duration-500 group-hover/card:brightness-110"
                   />
 
+                  {/* Watched Badge top-left */}
+                  {isWatched(item.id) && (
+                    <div className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-emerald-600/95 text-white text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shadow backdrop-blur-sm border border-emerald-400/50">
+                      <Check className="w-2.5 h-2.5 stroke-[3]" />
+                      <span>Watched</span>
+                    </div>
+                  )}
+
                   {/* Gradient & Hover Information Overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-110 transition">
                         <Play className="w-4 h-4 fill-black ml-0.5" />
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleLike(item);
-                        }}
-                        className={`w-7 h-7 rounded-full flex items-center justify-center transition border cursor-pointer ${
-                          isLiked(item.id)
-                            ? 'bg-rose-600 text-white border-rose-500 shadow-md'
-                            : 'bg-zinc-800/80 text-zinc-300 border-zinc-600 hover:border-white hover:text-white'
-                        }`}
-                        title={isLiked(item.id) ? 'Liked! Click to unlike' : 'Like to train recommendations'}
-                      >
-                        <Heart className={`w-3.5 h-3.5 ${isLiked(item.id) ? 'fill-white text-white' : ''}`} />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleWatched(item);
+                          }}
+                          className={`w-7 h-7 rounded-full flex items-center justify-center transition border cursor-pointer ${
+                            isWatched(item.id)
+                              ? 'bg-emerald-600 text-white border-emerald-400 shadow-md'
+                              : 'bg-zinc-800/80 text-zinc-300 border-zinc-600 hover:border-emerald-400 hover:text-emerald-400'
+                          }`}
+                          title={isWatched(item.id) ? 'Watched! Click to unmark' : 'Mark as Watched'}
+                        >
+                          <Check className={`w-3.5 h-3.5 stroke-[2.5] ${isWatched(item.id) ? 'text-white' : ''}`} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleLike(item);
+                          }}
+                          className={`w-7 h-7 rounded-full flex items-center justify-center transition border cursor-pointer ${
+                            isLiked(item.id)
+                              ? 'bg-rose-600 text-white border-rose-500 shadow-md'
+                              : 'bg-zinc-800/80 text-zinc-300 border-zinc-600 hover:border-white hover:text-white'
+                          }`}
+                          title={isLiked(item.id) ? 'Liked! Click to unlike' : 'Like to train recommendations'}
+                        >
+                          <Heart className={`w-3.5 h-3.5 ${isLiked(item.id) ? 'fill-white text-white' : ''}`} />
+                        </button>
+                      </div>
                     </div>
 
                     <h3 className="font-bold text-xs sm:text-sm text-white line-clamp-1">

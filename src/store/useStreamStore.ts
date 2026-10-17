@@ -48,6 +48,10 @@ interface StreamState {
 
   isLiked: (id: number) => boolean;
 
+  toggleWatched: (item: MediaItem) => void;
+
+  isWatched: (id: number) => boolean;
+
   addUserRating: (rating: UserRatingItem) => void;
 
   bulkAddRatings: (ratings: UserRatingItem[], syncToHistoryAndLikes?: boolean) => void;
@@ -186,6 +190,64 @@ export const useStreamStore = create<StreamState>()(
 
       isLiked: (id) => {
         return get().likedMedia.some((m) => m.id === id);
+      },
+
+      toggleWatched: (item) => {
+        const id = item.id;
+        const currentIsWatched = get().isWatched(id);
+        const type = item.media_type || 'movie';
+
+        if (currentIsWatched) {
+          // Remove from watchHistory and userRatings
+          set((state) => ({
+            watchHistory: state.watchHistory.filter((w) => w.id !== id),
+            userRatings: state.userRatings.filter((r) => r.id !== id),
+          }));
+        } else {
+          // Mark as Watched (In-app completed signal: weight 3.5)
+          const now = Date.now();
+          const newHistoryItem: WatchHistoryItem = {
+            id: item.id,
+            type,
+            title: item.title,
+            overview: item.overview,
+            poster_path: item.poster_path,
+            backdrop_path: item.backdrop_path,
+            release_date: item.release_date,
+            vote_average: item.vote_average,
+            updatedAt: now,
+            progressSeconds: 7200,
+            durationSeconds: 7200,
+          };
+
+          const newRatingItem: UserRatingItem = {
+            id: item.id,
+            type,
+            title: item.title,
+            rating: item.vote_average
+              ? Math.min(5, Math.max(1, Math.round((item.vote_average / 2) * 2) / 2))
+              : 4.0,
+            confidenceWeight: 3.5, // Step 2 In-App Completed Episode/Movie weight: 3.5
+            source: 'in_app',
+            poster_path: item.poster_path,
+            release_date: item.release_date,
+            genre_ids: item.genre_ids,
+            ratedAt: now,
+          };
+
+          set((state) => ({
+            watchHistory: [newHistoryItem, ...state.watchHistory.filter((w) => w.id !== id)].slice(0, 100),
+            userRatings: [newRatingItem, ...state.userRatings.filter((r) => r.id !== id)],
+          }));
+        }
+      },
+
+      isWatched: (id) => {
+        const state = get();
+        return (
+          state.watchHistory.some((w) => w.id === id) ||
+          state.userRatings.some((r) => r.id === id)
+        );
       },
 
       addUserRating: (rating) => {

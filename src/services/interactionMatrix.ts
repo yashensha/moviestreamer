@@ -21,6 +21,9 @@ export interface UnifiedInteractionItem {
   release_date?: string;
   vote_average?: number;
   genre_ids: number[];
+  overview?: string;
+  subgenres?: string[];
+  clusters?: string[];
   rawWeight: number;
   normalizedWeight: number;
   signals: InteractionSignalType[];
@@ -38,6 +41,8 @@ export interface TasteMatrixProfile {
   hardFilteredIds: number[];
   genreWeights: Record<number, number>;
   topGenres: Array<{ id: number; name: string; score: number }>;
+  subgenreWeights?: Record<string, number>;
+  topSubgenres?: Array<{ name: string; score: number }>;
   signalsCount: Record<InteractionSignalType, number>;
   generatedAt: number;
 }
@@ -123,6 +128,7 @@ export function computeUnifiedInteractionMatrix(
       release_date?: string;
       vote_average?: number;
       genre_ids?: number[];
+      overview?: string;
       updatedAt?: number;
     }
   ) => {
@@ -138,6 +144,7 @@ export function computeUnifiedInteractionMatrix(
           release_date: baseData.release_date,
           vote_average: baseData.vote_average,
           genre_ids: baseData.genre_ids || [],
+          overview: baseData.overview,
           rawWeight: 0,
           normalizedWeight: 0,
           signals: [],
@@ -156,6 +163,9 @@ export function computeUnifiedInteractionMatrix(
       if (!entry.item.poster_path && baseData.poster_path) {
         entry.item.poster_path = baseData.poster_path;
       }
+      if (!entry.item.overview && baseData.overview) {
+        entry.item.overview = baseData.overview;
+      }
       if (baseData.updatedAt && baseData.updatedAt > entry.item.lastInteractedAt) {
         entry.item.lastInteractedAt = baseData.updatedAt;
       }
@@ -173,6 +183,7 @@ export function computeUnifiedInteractionMatrix(
       release_date: media.release_date,
       vote_average: media.vote_average,
       genre_ids: media.genre_ids || (media.genres ? media.genres.map((g) => g.id) : []),
+      overview: media.overview,
     });
 
     if (!entry.item.signals.includes('heart')) {

@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { MediaItem, UserRatingItem } from '../types/movie';
 import { useStreamStore } from '../store/useStreamStore';
-import { getPosterUrl, GENRE_MAP, searchWithTMDB } from '../services/tmdb';
+import { getPosterUrl, searchWithTMDB } from '../services/tmdb';
 import { NetflixNavbar } from './NetflixNavbar';
 import { SearchResults } from './SearchResults';
 import { LetterboxdImportModal } from './LetterboxdImportModal';
@@ -57,6 +57,61 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
   const tasteMatrix = useMemo(() => {
     return computeUnifiedInteractionMatrix(watchHistory, likedMedia, userRatings);
   }, [watchHistory, likedMedia, userRatings]);
+
+  // Compute Top Subgenres & Thematic Clusters from 50,000+ MovieLens tags & TV taxonomy
+  const [topSubgenres, setTopSubgenres] = useState<Array<{ name: string; score: number; cluster?: string }>>([]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const resolveSubgenres = async () => {
+      try {
+        const { getMovieSubgenresMap, TAXONOMY_CLUSTERS } = await import('../services/subgenreService');
+        const movieMap = await getMovieSubgenresMap();
+
+        const subgenreScores: Record<string, { score: number; cluster?: string }> = {};
+
+        for (const item of tasteMatrix.interactions) {
+          if (item.isHardFiltered || item.normalizedWeight <= 0) continue;
+
+          const tags = movieMap[String(item.id)] || [];
+          for (const tag of tags) {
+            let cluster: string | undefined = undefined;
+            for (const [cName, cTags] of Object.entries(TAXONOMY_CLUSTERS)) {
+              if (cTags.includes(tag)) {
+                cluster = cName;
+                break;
+              }
+            }
+
+            if (!subgenreScores[tag]) {
+              subgenreScores[tag] = { score: 0, cluster };
+            }
+            subgenreScores[tag].score += item.normalizedWeight;
+          }
+        }
+
+        const sorted = Object.entries(subgenreScores)
+          .sort((a, b) => b[1].score - a[1].score)
+          .slice(0, 8)
+          .map(([name, data]) => ({
+            name,
+            score: Math.round(data.score * 10) / 10,
+            cluster: data.cluster,
+          }));
+
+        if (!isCancelled) {
+          setTopSubgenres(sorted);
+        }
+      } catch (e) {
+        console.warn('Subgenre calculation in ProfilePage failed', e);
+      }
+    };
+
+    resolveSubgenres();
+    return () => {
+      isCancelled = true;
+    };
+  }, [tasteMatrix]);
 
   // Modals & Drag-and-Drop
   const [isLetterboxdOpen, setIsLetterboxdOpen] = useState(false);
@@ -848,16 +903,16 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
                   <div className="h-8 w-px bg-zinc-800" />
                   <div className="text-left text-[11px] text-zinc-400">
                     <span className="font-bold text-zinc-200">
-                      {tasteMatrix.librarySize > 500
+                      {tasteMatrix.itemCount > 500
                         ? 'Power Importer (Dampened)'
-                        : tasteMatrix.librarySize > 100
+                        : tasteMatrix.itemCount > 100
                         ? 'Active Viewer'
-                        : tasteMatrix.librarySize >= 25
+                        : tasteMatrix.itemCount >= 25
                         ? 'Balanced Profile'
                         : 'Sparse / Cold-Start'}
                     </span>
                     <div className="text-[10px] text-zinc-500">
-                      {tasteMatrix.librarySize} total titles in taste base
+                      {tasteMatrix.itemCount} total titles in taste base
                     </div>
                   </div>
                 </div>
@@ -988,7 +1043,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
                       Scale(L) = (k₁ + 1) / (1 + k₁ · (1 - b + b · (L / L_ref)))
                     </div>
                     <div className="text-zinc-400 text-[10px] pt-1">
-                      Active: ({1.2 + 1}) / (1 + 1.2 · (0.25 + 0.75 · ({tasteMatrix.librarySize} / 50))) = <strong className="text-white">{tasteMatrix.bm25Dampener.toFixed(3)}</strong>
+                      Active: ({1.2 + 1}) / (1 + 1.2 · (0.25 + 0.75 · ({tasteMatrix.itemCount} / 50))) = <strong className="text-white">{tasteMatrix.bm25Dampener.toFixed(3)}</strong>
                     </div>
                   </div>
 
@@ -1052,6 +1107,58 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* Universal Subgenres & Thematic Narrative Tropes */}
+              <div className="bg-[#181818] border border-zinc-800 p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <h3 className="text-sm font-bold text-white">
+                      Discovered Subgenres & Narrative Tropes
+                    </h3>
+                  </div>
+                  <span className="text-[10px] text-emerald-400 font-mono bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5">
+                    50,928 Mapped Titles + TV Taxonomy
+                  </span>
+                </div>
+
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Moving beyond broad TMDB categories like "Action" or "Drama", our engine resolves fine-grained subgenres (Cyberpunk, Psychological Thriller, Neo-Noir, Heist, Time Loop) mapped across movies and series.
+                </p>
+
+                {topSubgenres.length === 0 ? (
+                  <div className="p-6 text-center text-zinc-500 text-xs">
+                    No subgenres registered yet. Rate or like titles to unlock deep subgenre affinities.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                    {topSubgenres.map((sg) => (
+                      <div
+                        key={sg.name}
+                        className="bg-zinc-900/80 border border-zinc-800 p-3 flex flex-col justify-between hover:border-zinc-700 transition"
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-bold text-xs text-white capitalize truncate" title={sg.name}>
+                            {sg.name}
+                          </span>
+                          <span className="font-mono text-zinc-400 text-[10px] font-bold flex-shrink-0">
+                            {sg.score.toFixed(1)} pts
+                          </span>
+                        </div>
+                        {sg.cluster ? (
+                          <div className="mt-2 text-[9px] text-rose-400 font-mono uppercase tracking-wider truncate bg-rose-950/30 px-1.5 py-0.5 border border-rose-900/40 self-start">
+                            {sg.cluster}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-[9px] text-zinc-500 font-mono uppercase tracking-wider">
+                            Thematic Trope
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Content Graph Seeds & Latent Semantic Representation */}

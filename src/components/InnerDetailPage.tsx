@@ -141,6 +141,8 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
   const saveMovieToHistory = useStreamStore((state) => state.saveMovieToHistory);
   const toggleLike = useStreamStore((state) => state.toggleLike);
   const isLiked = useStreamStore((state) => state.isLiked);
+  const toggleWatched = useStreamStore((state) => state.toggleWatched);
+  const isWatched = useStreamStore((state) => state.isWatched);
   const getPlaybackProgress = useStreamStore((state) => state.getPlaybackProgress);
 
   // Fetch dynamic TMDB recommendations when media changes
@@ -675,18 +677,33 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
                       </span>
                     </div>
 
-                    <button
-                      onClick={() => toggleLike(media)}
-                      className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
-                        isLiked(media.id)
-                          ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-950/50'
-                          : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80'
-                      }`}
-                      title={isLiked(media.id) ? 'Liked! Click to remove from taste profile' : 'Like this title to tailor recommendations'}
-                    >
-                      <Heart className={`w-3.5 h-3.5 ${isLiked(media.id) ? 'fill-white text-white' : 'text-rose-400'}`} />
-                      <span>{isLiked(media.id) ? 'Liked' : 'Like'}</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => toggleWatched(media)}
+                        className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
+                          isWatched(media.id)
+                            ? 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-950/50'
+                            : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80 hover:border-emerald-500 hover:text-emerald-400'
+                        }`}
+                        title={isWatched(media.id) ? 'Marked as watched! Click to unmark' : 'Mark as watched to update taste profile'}
+                      >
+                        <Check className={`w-3.5 h-3.5 stroke-[2.5] ${isWatched(media.id) ? 'text-white' : 'text-emerald-400'}`} />
+                        <span>{isWatched(media.id) ? 'Watched' : 'Mark Watched'}</span>
+                      </button>
+
+                      <button
+                        onClick={() => toggleLike(media)}
+                        className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
+                          isLiked(media.id)
+                            ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-950/50'
+                            : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80'
+                        }`}
+                        title={isLiked(media.id) ? 'Liked! Click to remove from taste profile' : 'Like this title to tailor recommendations'}
+                      >
+                        <Heart className={`w-3.5 h-3.5 ${isLiked(media.id) ? 'fill-white text-white' : 'text-rose-400'}`} />
+                        <span>{isLiked(media.id) ? 'Liked' : 'Like'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Synopsis */}
@@ -1121,6 +1138,46 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
                         <div className="w-10 h-10 rounded-none bg-white text-black flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
                           <Play className="w-4 h-4 fill-black ml-0.5" />
                         </div>
+                      </div>
+
+                      {/* Watched Badge top-left */}
+                      {isWatched(item.id) && (
+                        <div className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-emerald-600/95 text-white text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shadow backdrop-blur-sm border border-emerald-400/50">
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          <span>Watched</span>
+                        </div>
+                      )}
+
+                      {/* Top-Right Quick Actions: Watched & Like */}
+                      <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleWatched(item);
+                          }}
+                          className={`w-7 h-7 rounded-none flex items-center justify-center transition-all cursor-pointer ${
+                            isWatched(item.id)
+                              ? 'bg-emerald-600 text-white border-emerald-400'
+                              : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
+                          } backdrop-blur-sm border border-white/20`}
+                          title={isWatched(item.id) ? 'Watched! Click to unmark' : 'Mark as watched'}
+                        >
+                          <Check className={`w-3.5 h-3.5 stroke-[2.5] ${isWatched(item.id) ? 'text-white' : ''}`} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleLike(item);
+                          }}
+                          className={`w-7 h-7 rounded-none flex items-center justify-center transition-all cursor-pointer ${
+                            isLiked(item.id)
+                              ? 'bg-rose-600 text-white'
+                              : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
+                          } backdrop-blur-sm border border-white/20`}
+                          title={isLiked(item.id) ? 'Unlike' : 'Like this title'}
+                        >
+                          <Heart className={`w-3.5 h-3.5 ${isLiked(item.id) ? 'fill-white' : ''}`} />
+                        </button>
                       </div>
                     </div>
                     <div className="p-2.5 flex-grow flex flex-col justify-between">

@@ -3,13 +3,18 @@ import { GENRE_MAP } from './tmdb';
 import {
   computeUnifiedInteractionMatrix,
   type TasteMatrixProfile,
-  type UnifiedInteractionItem,
 } from './interactionMatrix';
 import {
   generateContentGraphCandidates,
-  type ContentGraphCandidate,
   type ContentGraphResult,
 } from './contentGraphGenerator';
+import {
+  STOPWORDS,
+  NARRATIVE_MOOD_KEYWORDS,
+  NARRATIVE_PLOT_TROPES,
+  CANONICAL_TAGS,
+  getKnownTitleTags,
+} from './subgenreService';
 
 export interface ScoredRecommendationItem {
   item: MediaItem;
@@ -20,6 +25,8 @@ export interface ScoredRecommendationItem {
   seedTitle?: string;
   matchReason: string;
   attributionTags: string[];
+  matchedSubgenres?: string[];
+  matchedCluster?: string;
 }
 
 export interface CuratedRecommendationRows {
@@ -39,28 +46,69 @@ export interface CuratedRecommendationRows {
 }
 
 /**
- * Step 4: Latent Model / Embedding Representation
- * Constructs a sparse hashed latent semantic vector for composite title text:
- * Title + Overview + Keywords + Director + Genres
+ * Step 4: Narrative & Trope Latent Semantic Vector
+ * Constructs a 256-dimensional feature vector prioritizing:
+ * - Subgenres & Taxonomy Clusters (weight: 5.0)
+ * - Thematic Keywords & Plot Tropes (weight: 3.5)
+ * - Narrative Mood words (dark, tense, satirical, surreal, etc.) (weight: 3.5)
+ * - Stopword-filtered synopsis content (weight: 1.0)
  */
-function createLatentSemanticVector(text: string): Map<number, number> {
+function createLatentSemanticVector(
+  title: string,
+  overview: string = '',
+  tags: string[] = []
+): Map<number, number> {
   const vector = new Map<number, number>();
-  // Tokenize and clean text
-  const tokens = text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((w) => w.length > 2);
 
-  // Hash each token into 128 latent dimensions
-  for (const token of tokens) {
+  const addHashedToken = (token: string, weight: number) => {
     let hash = 0;
     for (let i = 0; i < token.length; i++) {
       hash = (hash << 5) - hash + token.charCodeAt(i);
       hash |= 0;
     }
-    const dim = Math.abs(hash) % 128;
-    vector.set(dim, (vector.get(dim) || 0) + 1);
+    const dim = Math.abs(hash) % 256;
+    vector.set(dim, (vector.get(dim) || 0) + weight);
+  };
+
+  // 1. Tags & Subgenres (highest priority: 5.0)
+  for (const tag of tags) {
+    const cleanTag = tag.toLowerCase().trim();
+    if (!cleanTag) continue;
+    addHashedToken(cleanTag, 5.0);
+
+    // If tag contains multiple words, also hash individual words
+    const subWords = cleanTag.split(/\s+/).filter((w) => w.length > 2 && !STOPWORDS.has(w));
+    subWords.forEach((w) => addHashedToken(w, 2.5));
+  }
+
+  // 2. Overview / Synopsis Tokens with Stopword removal and Trope / Mood boosting
+  const overviewWords = overview
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+
+  for (const word of overviewWords) {
+    let weight = 1.0;
+    if (NARRATIVE_MOOD_KEYWORDS.has(word)) {
+      weight = 3.5;
+    } else if (NARRATIVE_PLOT_TROPES.has(word)) {
+      weight = 3.5;
+    } else if (CANONICAL_TAGS.has(word)) {
+      weight = 4.0;
+    }
+    addHashedToken(word, weight);
+  }
+
+  // 3. Title keywords
+  const titleWords = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+
+  for (const word of titleWords) {
+    addHashedToken(word, 2.0);
   }
 
   // Normalize vector to unit length
@@ -153,7 +201,7 @@ export async function generateFullRecommendationPipeline(
   });
 
   // Step 4: Construct User Latent Taste Profile Vector
-  // Fuse composite text from top positive seed items weighted by their BM25 score
+  // Fuse composite text (title + synopsis + subgenres + keywords) from top positive seed items
   const userLatentProfile = new Map<number, number>();
   let totalUserWeight = 0;
 
@@ -162,9 +210,9 @@ export async function generateFullRecommendationPipeline(
     const weight = seed.normalizedWeight * decay;
     totalUserWeight += weight;
 
-    const genreText = (seed.genre_ids || []).map((id) => GENRE_MAP[id] || '').join(' ');
-    const compositeText = `${seed.title} ${genreText}`;
-    const seedVector = createLatentSemanticVector(compositeText);
+    const genreText = (seed.genre_ids || []).map((id) => GENRE_MAP[id] || '').filter(Boolean);
+    const seedTags = [...(seed.subgenres || []), ...(seed.clusters || []), ...genreText];
+    const seedVector = createLatentSemanticVector(seed.title, seed.overview || '', seedTags);
 
     for (const [dim, val] of seedVector.entries()) {
       userLatentProfile.set(dim, (userLatentProfile.get(dim) || 0) + val * weight);
@@ -181,7 +229,7 @@ export async function generateFullRecommendationPipeline(
   // Step 5: Re-Ranking Layer, Negative Filtering & Diversity Balancing
   const scoredPool: ScoredRecommendationItem[] = [];
 
-  const { dislikedDirectorIds, dislikedCastIds, dislikedDirectorNames } =
+  const { dislikedDirectorNames } =
     graphResult.negativeGraphEntities;
 
   for (const candidate of graphResult.candidates) {
@@ -191,7 +239,6 @@ export async function generateFullRecommendationPipeline(
     if (completedIds.has(item.id)) continue;
 
     // Rule 2: Negative Filtering: Filter out candidates sharing disliked directors or cast
-    // If candidate mentions a disliked director
     if (candidate.matchedDirector && dislikedDirectorNames.includes(candidate.matchedDirector)) {
       continue;
     }
@@ -202,13 +249,24 @@ export async function generateFullRecommendationPipeline(
       ? calculateTemporalDecay(seedItem.lastInteractedAt)
       : 0.85;
 
-    // Step 4 Latent Similarity: Compute dot product against candidate composite text
-    const candidateComposite = `${item.title} ${item.overview || ''} ${candidate.matchedKeywords.join(' ')}`;
-    const candidateVector = createLatentSemanticVector(candidateComposite);
+    // Enrich candidate with our 60,919 pre-trained title dataset
+    const knownData = await getKnownTitleTags(item.id, item.media_type || 'movie');
+    const enrichedSubgenres = Array.from(new Set([...(candidate.matchedSubgenres || []), ...(knownData.subgenres || [])]));
+    const enrichedClusters = Array.from(new Set([...(candidate.matchedClusters || []), ...(knownData.clusters || [])]));
+    const enrichedTags = Array.from(new Set([...(candidate.matchedKeywords || []), ...(knownData.tags || [])]));
+
+    // Step 4 Latent Narrative Similarity: Compute dot product against candidate vector
+    const candidateTags = [
+      ...enrichedSubgenres,
+      ...enrichedClusters,
+      ...enrichedTags,
+      ...(candidate.matchedGenres || []),
+    ];
+    const candidateVector = createLatentSemanticVector(item.title, item.overview || '', candidateTags);
     const latentSim = computeCosineSimilarity(userLatentProfile, candidateVector);
 
     // Hybrid Scoring Formula:
-    // 40% Content Graph Score + 30% Latent Semantic Similarity + 20% TMDB Quality/Popularity + 10% BM25 Genre Affinity
+    // 45% Content Graph Score + 35% Latent Narrative Similarity + 20% TMDB Quality/Popularity
     const normalizedGraphScore = Math.min(25, candidate.graphScore) / 25; // [0, 1]
     const ratingScore = Math.min(10, Math.max(0, item.vote_average || 7.0)) / 10; // [0, 1]
 
@@ -218,10 +276,21 @@ export async function generateFullRecommendationPipeline(
 
     // Build human-explainable attribution tags
     const tags: string[] = [];
-    if (candidate.matchedDirectRec) tags.push('Direct Match');
-    if (candidate.matchedDirector) tags.push(`Dir. ${candidate.matchedDirector}`);
-    if (candidate.matchedKeywords.length > 0) tags.push(candidate.matchedKeywords[0]);
-    if (candidate.matchedGenres.length > 0) tags.push(candidate.matchedGenres[0]);
+    if (enrichedSubgenres.length > 0) {
+      tags.push(enrichedSubgenres[0]);
+    }
+    if (enrichedClusters.length > 0 && tags.length < 3) {
+      tags.push(enrichedClusters[0]);
+    }
+    const resolvedDirector = candidate.matchedDirector || knownData.director;
+    if (resolvedDirector) tags.push(`Dir. ${resolvedDirector}`);
+    if (candidate.matchedDirectRec && tags.length < 3) tags.push('Direct Match');
+    if (enrichedTags.length > 0 && tags.length < 3) {
+      tags.push(enrichedTags[0]);
+    }
+    if (candidate.matchedGenres.length > 0 && tags.length < 3) {
+      tags.push(candidate.matchedGenres[0]);
+    }
 
     scoredPool.push({
       item,
@@ -232,6 +301,8 @@ export async function generateFullRecommendationPipeline(
       seedTitle: candidate.sourceSeedTitle,
       matchReason: candidate.matchExplanations[0] || `Recommended for you`,
       attributionTags: tags.slice(0, 3),
+      matchedSubgenres: enrichedSubgenres,
+      matchedCluster: enrichedClusters[0],
     });
   }
 

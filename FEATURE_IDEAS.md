@@ -89,3 +89,24 @@ CREATE INDEX IF NOT EXISTS idx_capsule_user_week ON user_weekly_capsule(user_id,
 ## 🎨 5. UI Presentation
 - Positioned as a dedicated tab or spotlight card within `/profile` ("Your Capsule").
 - Sleek dark Bento-grid aesthetic with neon glow borders, animated counters, and an exportable / shareable summary card.
+
+---
+
+# 🎭 Feature Idea: Dynamic Multi-Entity Search & Actor Filmography Pages
+
+A rich, multi-modal search experience that resolves titles, actors, directors, creators, and subgenre tags with dedicated actor/person filmography hub pages.
+
+---
+
+## 📌 Concept Overview
+Currently, search maps user query strings directly to movie/series titles. Expanding this into a **Multi-Entity Search Engine**:
+1. **Dynamic Entity Categorization in Search Dropdown**:
+   - As the user types (e.g., *"Christopher Nolan"* or *"Cillian Murphy"* or *"Cyberpunk"*), search returns grouped results:
+     - 🎬 **Movies & Series** (matching titles)
+     - 🌟 **People** (Actors, Directors, Creators with avatar thumbnail, known-for title, and role badge)
+     - 🏷️ **Subgenres & Themes** (Direct jumps into thematic rows like *Neo-Noir*, *Mind-Bending*, *Heist*)
+2. **Dedicated Actor & Director Filmography Pages (`/person/:id`)**:
+   - Hero header with high-res portrait, biography, birthday, and career awards/nominations.
+   - Filterable filmography grid (Directed, Written, Acted in, Created) sorted by Release Year or Rating.
+   - Indicators showing which of their works the user has already watched or liked in MovieWatcher.
+   - "Top Collaborators": Directors and co-stars they frequently work with.

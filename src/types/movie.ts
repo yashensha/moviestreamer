@@ -96,7 +96,7 @@ export interface UserRatingItem {
   title: string;
   rating?: number; // Letterboxd 0.5 to 5.0 scale
   confidenceWeight: number; // 0.5 to 5.0 confidence weight for recommendation models
-  source: 'letterboxd' | 'manual' | 'stream';
+  source: 'letterboxd' | 'manual' | 'stream' | 'in_app';
   poster_path: string | null;
   backdrop_path?: string | null;
   release_date?: string;

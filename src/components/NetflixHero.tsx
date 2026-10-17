@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { MediaItem } from '../types/movie';
 import { getBackdropUrl, getLogoUrl, fetchMediaLogo, getCachedLogo } from '../services/tmdb';
-import { Play, Info, Star, ChevronLeft, ChevronRight, Heart } from 'lucide-react';
+import { Play, Info, Star, ChevronLeft, ChevronRight, Heart, Check } from 'lucide-react';
 import { useStreamStore } from '../store/useStreamStore';
 
 interface NetflixHeroProps {
@@ -119,10 +119,13 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
 
   const toggleLike = useStreamStore((state) => state.toggleLike);
   const isLiked = useStreamStore((state) => state.isLiked);
+  const toggleWatched = useStreamStore((state) => state.toggleWatched);
+  const isWatched = useStreamStore((state) => state.isWatched);
 
   if (!currentItem) return null;
 
   const liked = isLiked(currentItem.id);
+  const watched = isWatched(currentItem.id);
   const backdrop = getBackdropUrl(currentItem.backdrop_path);
   const releaseYear = currentItem.release_date
     ? new Date(currentItem.release_date).getFullYear()
@@ -212,6 +215,12 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
               Ultra HD 4K
             </span>
           )}
+          {watched && (
+            <span className="flex items-center gap-1 bg-emerald-600/90 text-white border border-emerald-400/50 px-2 py-0.5 rounded text-[11px] font-black uppercase tracking-wider shadow">
+              <Check className="w-3 h-3 stroke-[3]" />
+              Watched
+            </span>
+          )}
           <span className="flex items-center gap-1 text-amber-400">
             <Star className="w-3.5 h-3.5 fill-amber-400" />
             {currentItem.vote_average ? currentItem.vote_average.toFixed(1) : '8.2'}
@@ -242,6 +251,19 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
             >
               <Info className="w-5 h-5" />
               More Info & Episodes
+            </button>
+
+            <button
+              onClick={() => toggleWatched(currentItem)}
+              className={`flex items-center gap-2 px-5 py-3 rounded-md font-bold text-sm md:text-base backdrop-blur-sm transition duration-200 border cursor-pointer ${
+                watched
+                  ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-950/40'
+                  : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-200 border-zinc-600/60 hover:border-emerald-500 hover:text-emerald-400'
+              }`}
+              title={watched ? 'Watched! Click to unmark' : 'Mark as watched to train recommendations'}
+            >
+              <Check className={`w-5 h-5 stroke-[2.5] ${watched ? 'text-white' : 'text-emerald-400'}`} />
+              {watched ? 'Watched' : 'Mark Watched'}
             </button>
 
             <button

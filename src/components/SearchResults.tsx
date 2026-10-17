@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { MediaItem } from '../types/movie';
 import { getPosterUrl } from '../services/tmdb';
-import { Play, Star, Film, Tv, Heart } from 'lucide-react';
+import { Play, Star, Film, Tv, Heart, Check } from 'lucide-react';
 import { useStreamStore } from '../store/useStreamStore';
 
 interface SearchResultsProps {
@@ -22,6 +22,8 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
   const [filter, setFilter] = useState<'all' | 'movie' | 'tv'>('all');
   const toggleLike = useStreamStore((state) => state.toggleLike);
   const isLiked = useStreamStore((state) => state.isLiked);
+  const toggleWatched = useStreamStore((state) => state.toggleWatched);
+  const isWatched = useStreamStore((state) => state.isWatched);
 
   const filteredResults = results.filter((item) => {
     if (filter === 'all') return true;
@@ -105,6 +107,9 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
               ? new Date(item.release_date).getFullYear()
               : '';
 
+            const watched = isWatched(item.id);
+            const liked = isLiked(item.id);
+
             return (
               <div
                 key={`${item.media_type}-${item.id}`}
@@ -123,24 +128,45 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
                       <Play className="w-5 h-5 fill-black ml-0.5" />
                     </div>
                   </div>
-                  {/* Like button on search card */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleLike(item);
-                    }}
-                    className={`absolute top-2 left-2 z-20 w-7 h-7 rounded-none flex items-center justify-center transition-all ${
-                      isLiked(item.id)
-                        ? 'bg-rose-600 text-white'
-                        : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
-                    } backdrop-blur-sm border border-white/20 cursor-pointer`}
-                    title={isLiked(item.id) ? 'Liked! Click to unlike' : 'Like title to train recommendations'}
-                  >
-                    <Heart className={`w-3.5 h-3.5 ${isLiked(item.id) ? 'fill-white' : ''}`} />
-                  </button>
 
-                  <div className="absolute top-2 right-2 bg-black/70 px-1.5 py-0.5 rounded text-[10px] font-semibold text-zinc-300 border border-white/10 uppercase">
-                    {item.media_type === 'tv' ? 'TV' : 'Movie'}
+                  {/* Watched Badge top-left */}
+                  {watched && (
+                    <div className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-emerald-600/95 text-white text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shadow backdrop-blur-sm border border-emerald-400/50">
+                      <Check className="w-2.5 h-2.5 stroke-[3]" />
+                      <span>Watched</span>
+                    </div>
+                  )}
+
+                  {/* Top-Right Actions: Watched & Like */}
+                  <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleWatched(item);
+                      }}
+                      className={`w-7 h-7 rounded-none flex items-center justify-center transition-all cursor-pointer ${
+                        watched
+                          ? 'bg-emerald-600 text-white border-emerald-400'
+                          : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
+                      } backdrop-blur-sm border border-white/20`}
+                      title={watched ? 'Watched! Click to unmark' : 'Mark as watched'}
+                    >
+                      <Check className={`w-3.5 h-3.5 stroke-[2.5] ${watched ? 'text-white' : ''}`} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleLike(item);
+                      }}
+                      className={`w-7 h-7 rounded-none flex items-center justify-center transition-all cursor-pointer ${
+                        liked
+                          ? 'bg-rose-600 text-white'
+                          : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
+                      } backdrop-blur-sm border border-white/20`}
+                      title={liked ? 'Liked! Click to unlike' : 'Like title to train recommendations'}
+                    >
+                      <Heart className={`w-3.5 h-3.5 ${liked ? 'fill-white' : ''}`} />
+                    </button>
                   </div>
                 </div>
 
