@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Search, X, Film, Tv } from 'lucide-react';
+import { Search, X, Film, Tv, Heart, User } from 'lucide-react';
+import { useStreamStore } from '../store/useStreamStore';
 
 interface NetflixNavbarProps {
-  activeTab?: 'home' | 'tv' | 'movie' | 'history';
-  onSelectTab?: (tab: 'home' | 'tv' | 'movie' | 'history') => void;
+  activeTab?: 'home' | 'tv' | 'movie' | 'history' | 'profile';
+  onSelectTab?: (tab: 'home' | 'tv' | 'movie' | 'history' | 'profile') => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   actions?: React.ReactNode;
@@ -24,14 +25,15 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const likedMedia = useStreamStore((state) => state.likedMedia);
 
   const currentTab = (
-    location.pathname.startsWith('/tv') || location.pathname.startsWith('/series')
+    location.pathname.startsWith('/profile') || location.pathname.startsWith('/history')
+      ? 'profile'
+      : location.pathname.startsWith('/tv') || location.pathname.startsWith('/series')
       ? 'tv'
       : location.pathname.startsWith('/movie')
       ? 'movie'
-      : location.pathname.startsWith('/history')
-      ? 'history'
       : activeTab || 'home'
   );
 
@@ -52,7 +54,7 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
     }
   };
 
-  const handleNav = (tab: 'home' | 'tv' | 'movie' | 'history', path: string) => {
+  const handleNav = (tab: 'home' | 'tv' | 'movie' | 'history' | 'profile', path: string) => {
     onSelectTab?.(tab);
     onSearchChange('');
     navigate(path);
@@ -125,21 +127,34 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
             <Film className="w-3.5 h-3.5" /> Movies
           </button>
           <button
-            onClick={() => handleNav('history', '/history')}
-            className={`transition cursor-pointer ${
-              currentTab === 'history' && !searchQuery
+            onClick={() => handleNav('profile', '/profile')}
+            className={`flex items-center gap-1.5 transition cursor-pointer ${
+              currentTab === 'profile' && !searchQuery
                 ? 'text-white font-bold'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            Continue Watching
+            <User className="w-3.5 h-3.5" /> Profile
           </button>
         </nav>
       </div>
 
-      {/* Right side: Actions + Search */}
+      {/* Right side: Actions + Search + Profile */}
       <div className="flex items-center gap-3 md:gap-4">
         {actions}
+
+        {/* Dynamic Taste Profile Indicator */}
+        {likedMedia.length > 0 && (
+          <button
+            onClick={() => handleNav('profile', '/profile')}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 rounded-none text-xs text-zinc-300 shadow-sm transition cursor-pointer"
+            title={`${likedMedia.length} titles liked. Click to view profile & taste`}
+          >
+            <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
+            <span className="font-semibold text-rose-400">{likedMedia.length}</span>
+            <span className="text-zinc-500 text-[11px]">Taste</span>
+          </button>
+        )}
 
         {/* Netflix Search Bar powered by tmdb-ts */}
         <div className="relative flex items-center">
@@ -184,6 +199,19 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
             )}
           </div>
         </div>
+
+        {/* Profile Avatar Quick Button */}
+        <button
+          onClick={() => handleNav('profile', '/profile')}
+          className={`w-8 h-8 rounded-none bg-gradient-to-tr from-rose-700 via-rose-600 to-red-500 flex items-center justify-center text-white border transition cursor-pointer shadow-md ${
+            currentTab === 'profile'
+              ? 'border-white scale-105'
+              : 'border-white/20 hover:border-white/80'
+          }`}
+          title="Open Profile, Liked Titles & History"
+        >
+          <User className="w-4 h-4 text-white" />
+        </button>
       </div>
     </header>
     </div>

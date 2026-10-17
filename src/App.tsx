@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import type { MediaItem } from './types/movie';
 import {
@@ -12,9 +12,10 @@ import {
 import { NetflixNavbar } from './components/NetflixNavbar';
 import { NetflixHero } from './components/NetflixHero';
 import { MovieRow } from './components/MovieRow';
-import { ContinueWatchingRow } from './components/ContinueWatchingRow';
+import { TailoredRecommendationsRow } from './components/TailoredRecommendationsRow';
 import { InnerDetailPage } from './components/InnerDetailPage';
 import { SearchResults } from './components/SearchResults';
+import { ProfilePage } from './components/ProfilePage';
 import { useStreamStore } from './store/useStreamStore';
 
 function BrowseView({
@@ -22,20 +23,17 @@ function BrowseView({
   trending,
   seriesList,
   moviesList,
-  allAvailableMedia,
   onOpenItem,
 }: {
-  tab: 'home' | 'tv' | 'movie' | 'history';
+  tab: 'home' | 'tv' | 'movie' | 'profile';
   trending: MediaItem[];
   seriesList: MediaItem[];
   moviesList: MediaItem[];
-  allAvailableMedia: MediaItem[];
   onOpenItem: (item: MediaItem) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<MediaItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const navigate = useNavigate();
   const watchHistory = useStreamStore((state) => state.watchHistory);
 
   // Search with debounce using tmdb-ts
@@ -56,32 +54,37 @@ function BrowseView({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Map watch history to MediaItem format for the Hero banner
-  const continueWatchingMedia: MediaItem[] = watchHistory.map((item) => {
-    const existing = allAvailableMedia.find((m) => m.id === item.id);
-    return {
+  // Map watch history to MediaItems for the Hero banner
+  const continueWatchingMedia = useMemo<MediaItem[]>(() => {
+    return watchHistory.map((item) => ({
       id: item.id,
       title: item.title,
-      overview: item.overview || existing?.overview || '',
+      overview: item.overview || '',
       poster_path: item.poster_path,
       backdrop_path: item.backdrop_path,
-      release_date: item.release_date || existing?.release_date || '',
-      vote_average: item.vote_average ?? existing?.vote_average ?? 8.0,
+      release_date: item.release_date || '',
+      vote_average: item.vote_average ?? 8.0,
       media_type: item.type,
-      number_of_seasons: item.number_of_seasons || existing?.number_of_seasons,
+      number_of_seasons: item.number_of_seasons,
       season: item.season,
       episode: item.episode,
-    };
-  });
+    }));
+  }, [watchHistory]);
 
-  const featuredList =
-    tab === 'tv'
-      ? seriesList.slice(0, 8)
-      : tab === 'movie'
-      ? moviesList.slice(0, 8)
-      : continueWatchingMedia.length > 0
-      ? continueWatchingMedia.slice(0, 8)
-      : trending.slice(0, 8);
+  const featuredList = useMemo(() => {
+    if (tab === 'tv') {
+      return seriesList.slice(0, 8);
+    }
+    if (tab === 'movie') {
+      return moviesList.slice(0, 8);
+    }
+    // On home: feature continue watching if available, otherwise trending
+    if (continueWatchingMedia.length > 0) {
+      return continueWatchingMedia.slice(0, 8);
+    }
+    return trending.slice(0, 8);
+  }, [tab, seriesList, moviesList, continueWatchingMedia, trending]);
+
   const top10Items = trending.slice(0, 10);
 
   return (
@@ -106,7 +109,7 @@ function BrowseView({
         /* Netflix Browse Home / Category Views */
         <main className="flex-grow">
           {/* Billboard Hero Banner */}
-          {tab !== 'history' && featuredList.length > 0 && (
+          {featuredList.length > 0 && (
             <NetflixHero
               items={featuredList}
               onPlay={onOpenItem}
@@ -115,16 +118,18 @@ function BrowseView({
           )}
 
           {/* Carousel Rows Container starting cleanly below the 100vh hero */}
-          <div className={`relative z-20 ${tab === 'history' ? 'pt-28' : 'pt-6'} space-y-6 pb-20`}>
-            {/* Continue Watching Row (powered by Zustand store) */}
-            <ContinueWatchingRow
-              onResume={(historyItem) => {
-                const targetUrl =
-                  historyItem.type === 'tv' && historyItem.season && historyItem.episode
-                    ? `/tv/${historyItem.id}?season=${historyItem.season}&episode=${historyItem.episode}`
-                    : `/${historyItem.type}/${historyItem.id}`;
-                navigate(targetUrl);
-              }}
+          <div className="relative z-20 pt-6 space-y-6 pb-20">
+            {/* Dynamic TMDB Taste Tailored Recommendations Row - adapts to current page preference */}
+            <TailoredRecommendationsRow
+              onSelect={onOpenItem}
+              mediaType={tab === 'tv' ? 'tv' : tab === 'movie' ? 'movie' : undefined}
+              title={
+                tab === 'tv'
+                  ? 'Top Series Tailored for You'
+                  : tab === 'movie'
+                  ? 'Top Movies Tailored for You'
+                  : 'Top Picks for You'
+              }
             />
 
             {/* Trending Now */}
@@ -241,7 +246,6 @@ export function App() {
             trending={trending}
             seriesList={seriesList}
             moviesList={moviesList}
-            allAvailableMedia={allAvailableMedia}
             onOpenItem={handleOpenItem}
           />
         }
@@ -254,7 +258,6 @@ export function App() {
             trending={trending}
             seriesList={seriesList}
             moviesList={moviesList}
-            allAvailableMedia={allAvailableMedia}
             onOpenItem={handleOpenItem}
           />
         }
@@ -267,7 +270,6 @@ export function App() {
             trending={trending}
             seriesList={seriesList}
             moviesList={moviesList}
-            allAvailableMedia={allAvailableMedia}
             onOpenItem={handleOpenItem}
           />
         }
@@ -280,7 +282,6 @@ export function App() {
             trending={trending}
             seriesList={seriesList}
             moviesList={moviesList}
-            allAvailableMedia={allAvailableMedia}
             onOpenItem={handleOpenItem}
           />
         }
@@ -293,23 +294,17 @@ export function App() {
             trending={trending}
             seriesList={seriesList}
             moviesList={moviesList}
-            allAvailableMedia={allAvailableMedia}
             onOpenItem={handleOpenItem}
           />
         }
       />
       <Route
+        path="/profile"
+        element={<ProfilePage onOpenItem={handleOpenItem} />}
+      />
+      <Route
         path="/history"
-        element={
-          <BrowseView
-            tab="history"
-            trending={trending}
-            seriesList={seriesList}
-            moviesList={moviesList}
-            allAvailableMedia={allAvailableMedia}
-            onOpenItem={handleOpenItem}
-          />
-        }
+        element={<ProfilePage onOpenItem={handleOpenItem} />}
       />
       <Route
         path="/tv/:id"

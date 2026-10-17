@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import type { MediaItem } from '../types/movie';
 import { getPosterUrl } from '../services/tmdb';
-import { Play, Star, Film, Tv } from 'lucide-react';
+import { Play, Star, Film, Tv, Heart } from 'lucide-react';
+import { useStreamStore } from '../store/useStreamStore';
 
 interface SearchResultsProps {
   query: string;
@@ -19,6 +20,8 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
   onClear,
 }) => {
   const [filter, setFilter] = useState<'all' | 'movie' | 'tv'>('all');
+  const toggleLike = useStreamStore((state) => state.toggleLike);
+  const isLiked = useStreamStore((state) => state.isLiked);
 
   const filteredResults = results.filter((item) => {
     if (filter === 'all') return true;
@@ -120,6 +123,22 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
                       <Play className="w-5 h-5 fill-black ml-0.5" />
                     </div>
                   </div>
+                  {/* Like button on search card */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleLike(item);
+                    }}
+                    className={`absolute top-2 left-2 z-20 w-7 h-7 rounded-none flex items-center justify-center transition-all ${
+                      isLiked(item.id)
+                        ? 'bg-rose-600 text-white'
+                        : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
+                    } backdrop-blur-sm border border-white/20 cursor-pointer`}
+                    title={isLiked(item.id) ? 'Liked! Click to unlike' : 'Like title to train recommendations'}
+                  >
+                    <Heart className={`w-3.5 h-3.5 ${isLiked(item.id) ? 'fill-white' : ''}`} />
+                  </button>
+
                   <div className="absolute top-2 right-2 bg-black/70 px-1.5 py-0.5 rounded text-[10px] font-semibold text-zinc-300 border border-white/10 uppercase">
                     {item.media_type === 'tv' ? 'TV' : 'Movie'}
                   </div>

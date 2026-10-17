@@ -1,0 +1,18 @@
+name = "moviewatcher"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "dist"
+
+# ==============================================================================
+# Cloudflare D1 Database Binding
+# Once you create your D1 database with:
+#   npx wrangler d1 create moviewatcher-db
+# Replace 'database_id' below with your actual database_id
+# ==============================================================================
+[[d1_databases]]
+binding = "DB"
+database_name = "moviewatcher-db"
+database_id = "your-d1-database-id-here"
+
+[vars]
+ENVIRONMENT = "production"

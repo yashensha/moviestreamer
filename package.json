@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "npm run build && wrangler pages deploy dist",
+    "d1:init": "wrangler d1 execute moviewatcher-db --remote --file=./schema.sql",
+    "d1:local": "wrangler d1 execute moviewatcher-db --local --file=./schema.sql"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

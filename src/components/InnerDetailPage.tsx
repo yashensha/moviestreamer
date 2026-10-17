@@ -12,7 +12,8 @@ import {
   fetchCredits,
   getCachedLogo,
   ALL_CURATED_MEDIA,
-  searchWithTMDB
+  searchWithTMDB,
+  fetchRecommendations
 } from '../services/tmdb';
 import { NetflixNavbar } from './NetflixNavbar';
 import { SearchResults } from './SearchResults';
@@ -25,7 +26,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Check
+  Check,
+  Heart
 } from 'lucide-react';
 
 interface InnerDetailPageProps {
@@ -129,9 +131,48 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
   const [logoFailed, setLogoFailed] = useState(false);
   const [cast, setCast] = useState<string[]>([]);
 
+  // Dynamic TMDB Recommendations for "More Like This"
+  const [relatedMedia, setRelatedMedia] = useState<MediaItem[]>([]);
+  const [loadingRelated, setLoadingRelated] = useState(false);
+
   const saveSeriesEpisode = useStreamStore((state) => state.saveSeriesEpisode);
   const getSeriesLastEpisode = useStreamStore((state) => state.getSeriesLastEpisode);
   const saveMovieToHistory = useStreamStore((state) => state.saveMovieToHistory);
+  const toggleLike = useStreamStore((state) => state.toggleLike);
+  const isLiked = useStreamStore((state) => state.isLiked);
+
+  // Fetch dynamic TMDB recommendations when media changes
+  useEffect(() => {
+    let isMounted = true;
+    if (!media) {
+      setRelatedMedia([]);
+      return;
+    }
+
+    setLoadingRelated(true);
+    fetchRecommendations(media.id, media.media_type)
+      .then((recs) => {
+        if (!isMounted) return;
+        if (recs && recs.length > 0) {
+          setRelatedMedia(recs);
+        } else {
+          // Fallback to media pool if TMDB has no direct recommendations
+          const pool = allMedia && allMedia.length > 0 ? allMedia : ALL_CURATED_MEDIA;
+          setRelatedMedia(pool.filter((m) => m.id !== media.id).slice(0, 12));
+        }
+        setLoadingRelated(false);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        const pool = allMedia && allMedia.length > 0 ? allMedia : ALL_CURATED_MEDIA;
+        setRelatedMedia(pool.filter((m) => m.id !== media.id).slice(0, 12));
+        setLoadingRelated(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [media?.id, media?.media_type, allMedia]);
 
   // Fetch transparent title logo & cast whenever media changes
   useEffect(() => {
@@ -371,8 +412,6 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
   const releaseYear = media.release_date ? new Date(media.release_date).getFullYear() : '';
   const totalSeasons = media.number_of_seasons || (media.seasons ? media.seasons.length : 1);
   const currentEp = playingEp || episodes.find((e) => e.episode_number === playingEpisode);
-  const mediaPool = allMedia && allMedia.length > 0 ? allMedia : ALL_CURATED_MEDIA;
-  const relatedMedia = mediaPool.filter((m) => m.id !== media.id).slice(0, 6);
 
   return (
     <div className="relative min-h-screen bg-[#141414] text-zinc-100 pb-20 selection:bg-rose-600 selection:text-white">
@@ -517,18 +556,33 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
                     </div>
                   )}
 
-                  {/* Year & Rating under Genres (without box) */}
-                  <div className="flex items-center gap-3 text-xs text-zinc-400 pt-0.5">
-                    {releaseYear && (
+                  {/* Year & Rating under Genres + Like button */}
+                  <div className="flex items-center justify-between gap-3 text-xs text-zinc-400 pt-0.5">
+                    <div className="flex items-center gap-3">
+                      {releaseYear && (
+                        <span className="flex items-center gap-1.5 font-medium text-zinc-300">
+                          <Calendar className="w-3.5 h-3.5 text-zinc-400" />
+                          <span>{releaseYear}</span>
+                        </span>
+                      )}
                       <span className="flex items-center gap-1.5 font-medium text-zinc-300">
-                        <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-                        <span>{releaseYear}</span>
+                        <Star className="w-3.5 h-3.5 fill-zinc-400 text-zinc-400" />
+                        <span>{media.vote_average ? media.vote_average.toFixed(1) : '8.0'}</span>
                       </span>
-                    )}
-                    <span className="flex items-center gap-1.5 font-medium text-zinc-300">
-                      <Star className="w-3.5 h-3.5 fill-zinc-400 text-zinc-400" />
-                      <span>{media.vote_average ? media.vote_average.toFixed(1) : '8.0'}</span>
-                    </span>
+                    </div>
+
+                    <button
+                      onClick={() => toggleLike(media)}
+                      className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
+                        isLiked(media.id)
+                          ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-950/50'
+                          : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80'
+                      }`}
+                      title={isLiked(media.id) ? 'Liked! Click to remove from taste profile' : 'Like this title to tailor recommendations'}
+                    >
+                      <Heart className={`w-3.5 h-3.5 ${isLiked(media.id) ? 'fill-white text-white' : 'text-rose-400'}`} />
+                      <span>{isLiked(media.id) ? 'Liked' : 'Like'}</span>
+                    </button>
                   </div>
 
                   {/* Synopsis */}
@@ -819,23 +873,38 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
 
             <div className="md:col-span-3 space-y-4 flex flex-col justify-between">
               <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  {releaseYear && (
-                    <span className="flex items-center gap-1 text-xs text-zinc-400">
-                      <Calendar className="w-3.5 h-3.5" />
-                      {releaseYear}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {releaseYear && (
+                      <span className="flex items-center gap-1 text-xs text-zinc-400">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {releaseYear}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1 text-xs text-zinc-300 font-semibold bg-zinc-800/80 px-2 py-0.5 rounded-none border border-zinc-700/60">
+                      <Star className="w-3.5 h-3.5 fill-zinc-400 text-zinc-400" />
+                      <span>{media.vote_average ? media.vote_average.toFixed(1) : '8.0'}</span>
                     </span>
-                  )}
-                  <span className="flex items-center gap-1 text-xs text-zinc-300 font-semibold bg-zinc-800/80 px-2 py-0.5 rounded-none border border-zinc-700/60">
-                    <Star className="w-3.5 h-3.5 fill-zinc-400 text-zinc-400" />
-                    <span>{media.vote_average ? media.vote_average.toFixed(1) : '8.0'}</span>
-                  </span>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-none bg-zinc-800/50 text-zinc-400 border border-zinc-700/60">
-                    PG-13
-                  </span>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-none bg-zinc-800/50 text-zinc-400 border border-zinc-700/60">
-                    Ultra HD 4K
-                  </span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-none bg-zinc-800/50 text-zinc-400 border border-zinc-700/60">
+                      PG-13
+                    </span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-none bg-zinc-800/50 text-zinc-400 border border-zinc-700/60">
+                      Ultra HD 4K
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => toggleLike(media)}
+                    className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-none border transition-all cursor-pointer ${
+                      isLiked(media.id)
+                        ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-950/50'
+                        : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 border-zinc-700/80'
+                    }`}
+                    title={isLiked(media.id) ? 'Liked! Click to remove from taste profile' : 'Like this title to tailor recommendations'}
+                  >
+                    <Heart className={`w-3.5 h-3.5 ${isLiked(media.id) ? 'fill-white text-white' : 'text-rose-400'}`} />
+                    <span>{isLiked(media.id) ? 'Liked' : 'Like'}</span>
+                  </button>
                 </div>
 
                 {/* Title: Transparent PNG Title Logo with Text Fallback */}
@@ -905,46 +974,69 @@ export const InnerDetailPage: React.FC<InnerDetailPageProps> = ({
           </div>
         )}
 
-        {/* More Like This / Recommended */}
-        {relatedMedia.length > 0 && (
+        {/* More Like This / Dynamic TMDB Recommendations */}
+        {(loadingRelated || relatedMedia.length > 0) && (
           <div className="space-y-4 pt-6 border-t border-zinc-800">
-            <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-              More Like This
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                More Like This
+              </h3>
+              {loadingRelated && (
+                <span className="text-xs text-zinc-500 animate-pulse">Finding recommendations...</span>
+              )}
+            </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
-              {relatedMedia.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => handleSelectRelated(item)}
-                  className="bg-[#181818] rounded-none overflow-hidden border border-zinc-800 hover:border-zinc-600 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg group"
-                >
-                  <div className="relative aspect-[2/3] w-full bg-zinc-900">
-                    <img
-                      src={getPosterUrl(item.poster_path)}
-                      alt={item.title}
-                      loading="lazy"
-                      className="w-full h-full object-cover rounded-none"
-                    />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <div className="w-9 h-9 rounded-none bg-white text-black flex items-center justify-center">
-                        <Play className="w-4 h-4 fill-black ml-0.5" />
+            {loadingRelated && relatedMedia.length === 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
+                {[...Array(6)].map((_, idx) => (
+                  <div key={idx} className="bg-zinc-900/60 border border-zinc-800 animate-pulse">
+                    <div className="aspect-[2/3] w-full bg-zinc-800/50" />
+                    <div className="p-2 space-y-2">
+                      <div className="h-3 bg-zinc-800 rounded-none w-3/4" />
+                      <div className="h-2.5 bg-zinc-800/60 rounded-none w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+                {relatedMedia.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => handleSelectRelated(item)}
+                    className="bg-[#181818] rounded-none overflow-hidden border border-zinc-800 hover:border-zinc-500 hover:scale-[1.03] transition-all duration-300 cursor-pointer shadow-lg group flex flex-col"
+                  >
+                    <div className="relative aspect-[2/3] w-full bg-zinc-900 flex-shrink-0">
+                      <img
+                        src={getPosterUrl(item.poster_path)}
+                        alt={item.title}
+                        loading="lazy"
+                        className="w-full h-full object-cover rounded-none"
+                      />
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-none bg-white text-black flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
+                          <Play className="w-4 h-4 fill-black ml-0.5" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-2.5 flex-grow flex flex-col justify-between">
+                      <h5 className="font-bold text-xs text-white truncate" title={item.title}>
+                        {item.title}
+                      </h5>
+                      <div className="flex items-center justify-between text-[11px] text-zinc-400 mt-1.5 pt-1 border-t border-zinc-800/40">
+                        <span className="flex items-center gap-1 text-amber-400 font-semibold">
+                          <Star className="w-2.5 h-2.5 fill-amber-400" />
+                          {item.vote_average ? item.vote_average.toFixed(1) : 'NR'}
+                        </span>
+                        <span className="uppercase text-[10px] tracking-wider text-zinc-500 font-semibold">
+                          {item.media_type === 'tv' ? 'TV Series' : 'Movie'}
+                        </span>
                       </div>
                     </div>
                   </div>
-                  <div className="p-2">
-                    <h5 className="font-bold text-xs text-white truncate">{item.title}</h5>
-                    <div className="flex items-center justify-between text-[11px] text-zinc-400 mt-1">
-                      <span className="flex items-center gap-0.5 text-amber-400 font-semibold">
-                        <Star className="w-2.5 h-2.5 fill-amber-400" />
-                        {item.vote_average ? item.vote_average.toFixed(1) : ''}
-                      </span>
-                      <span>{item.media_type === 'tv' ? 'TV' : 'Film'}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

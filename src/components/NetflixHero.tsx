@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { MediaItem } from '../types/movie';
 import { getBackdropUrl, getLogoUrl, fetchMediaLogo, getCachedLogo } from '../services/tmdb';
-import { Play, Info, Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Play, Info, Star, ChevronLeft, ChevronRight, Heart } from 'lucide-react';
+import { useStreamStore } from '../store/useStreamStore';
 
 interface NetflixHeroProps {
   items?: MediaItem[];
@@ -24,12 +25,15 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
   const [isPaused, setIsPaused] = useState(false);
   const [fade, setFade] = useState(true);
 
-  // Reset index when items change
+  // Stable list ID key so re-renders don't cancel auto-advance
+  const listKey = useMemo(() => list.map((i) => i.id).join('-'), [list]);
+
+  // Reset index only when the title collection actually changes
   useEffect(() => {
     setCurrentIndex(0);
-  }, [items]);
+  }, [listKey]);
 
-  // Auto-advance through trending titles every 7 seconds
+  // Auto-advance through carousel items every 6 seconds and loop continuously
   useEffect(() => {
     if (list.length <= 1 || isPaused) return;
 
@@ -38,11 +42,11 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
       setTimeout(() => {
         setCurrentIndex((prev) => (prev + 1) % list.length);
         setFade(true);
-      }, 250);
-    }, 7000);
+      }, 300);
+    }, 6000);
 
     return () => clearInterval(timer);
-  }, [list.length, isPaused, currentIndex]);
+  }, [list.length, isPaused]);
 
   const goToNext = () => {
     if (list.length <= 1) return;
@@ -113,8 +117,12 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
     });
   }, [list]);
 
+  const toggleLike = useStreamStore((state) => state.toggleLike);
+  const isLiked = useStreamStore((state) => state.isLiked);
+
   if (!currentItem) return null;
 
+  const liked = isLiked(currentItem.id);
   const backdrop = getBackdropUrl(currentItem.backdrop_path);
   const releaseYear = currentItem.release_date
     ? new Date(currentItem.release_date).getFullYear()
@@ -235,10 +243,44 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
               <Info className="w-5 h-5" />
               More Info & Episodes
             </button>
+
+            <button
+              onClick={() => toggleLike(currentItem)}
+              className={`flex items-center gap-2 px-5 py-3 rounded-md font-bold text-sm md:text-base backdrop-blur-sm transition duration-200 border cursor-pointer ${
+                liked
+                  ? 'bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-950/40'
+                  : 'bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-200 border-zinc-600/60'
+              }`}
+              title={liked ? 'Liked! Click to unlike' : 'Like title to train your recommendations'}
+            >
+              <Heart className={`w-5 h-5 ${liked ? 'fill-white text-white' : 'text-rose-400'}`} />
+              {liked ? 'Liked' : 'Like'}
+            </button>
           </div>
 
-          {/* Right Side: Spatial Audio Badge */}
-       
+          {/* Right Side: Carousel Progress Indicators */}
+          {list.length > 1 && (
+            <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+              {list.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setFade(false);
+                    setTimeout(() => {
+                      setCurrentIndex(idx);
+                      setFade(true);
+                    }, 200);
+                  }}
+                  className={`h-1.5 transition-all duration-300 rounded-full cursor-pointer ${
+                    currentIndex === idx
+                      ? 'w-6 bg-rose-600'
+                      : 'w-2 bg-zinc-600 hover:bg-zinc-400'
+                  }`}
+                  aria-label={`Go to slide ${idx + 1}`}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

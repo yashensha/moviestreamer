@@ -9,6 +9,9 @@ interface StreamState {
   // List of all items currently being watched (Continue Watching)
   watchHistory: WatchHistoryItem[];
 
+  // List of liked/favorited media items for taste personalization
+  likedMedia: MediaItem[];
+
   // Actions
   saveSeriesEpisode: (
     seriesId: number,
@@ -22,6 +25,8 @@ interface StreamState {
       release_date?: string;
       vote_average?: number;
       number_of_seasons?: number;
+      genre_ids?: number[];
+      genres?: { id: number; name: string }[];
     }
   ) => void;
 
@@ -34,6 +39,10 @@ interface StreamState {
   removeFromHistory: (id: number) => void;
 
   clearHistory: () => void;
+
+  toggleLike: (item: MediaItem) => void;
+
+  isLiked: (id: number) => boolean;
 }
 
 export const useStreamStore = create<StreamState>()(
@@ -41,6 +50,7 @@ export const useStreamStore = create<StreamState>()(
     (set, get) => ({
       seriesProgress: {},
       watchHistory: [],
+      likedMedia: [],
 
       saveSeriesEpisode: (seriesId, season, episode, meta = {}) => {
         const now = Date.now();
@@ -126,7 +136,25 @@ export const useStreamStore = create<StreamState>()(
       },
 
       clearHistory: () => {
-        set({ seriesProgress: {}, watchHistory: [] });
+        set({ seriesProgress: {}, watchHistory: [], likedMedia: [] });
+      },
+
+      toggleLike: (item) => {
+        set((state) => {
+          const exists = state.likedMedia.some((m) => m.id === item.id);
+          if (exists) {
+            return {
+              likedMedia: state.likedMedia.filter((m) => m.id !== item.id),
+            };
+          }
+          return {
+            likedMedia: [item, ...state.likedMedia].slice(0, 50),
+          };
+        });
+      },
+
+      isLiked: (id) => {
+        return get().likedMedia.some((m) => m.id === id);
       },
     }),
     {

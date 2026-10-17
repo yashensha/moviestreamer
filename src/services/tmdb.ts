@@ -1,5 +1,5 @@
 import { TMDB } from 'tmdb-ts';
-import type { MediaItem, Season, Episode } from '../types/movie';
+import type { MediaItem, Season, Episode, WatchHistoryItem } from '../types/movie';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
@@ -157,6 +157,272 @@ export const fetchCredits = async (
 
   creditsCache.set(cacheKey, []);
   return [];
+};
+
+const recommendationsCache = new Map<string, MediaItem[]>();
+
+export const fetchRecommendations = async (
+  id: number,
+  type: 'movie' | 'tv' = 'movie'
+): Promise<MediaItem[]> => {
+  const cacheKey = `${type}-${id}`;
+  if (recommendationsCache.has(cacheKey)) {
+    return recommendationsCache.get(cacheKey) || [];
+  }
+
+  const mapResult = (item: any): MediaItem => ({
+    id: item.id,
+    title: item.title || item.name || 'Untitled',
+    original_title: item.original_title || item.original_name,
+    overview: item.overview || '',
+    poster_path: item.poster_path ?? null,
+    backdrop_path: item.backdrop_path ?? null,
+    release_date: item.release_date || item.first_air_date || '',
+    vote_average: item.vote_average || 0,
+    vote_count: item.vote_count || 0,
+    media_type: (item.media_type as 'movie' | 'tv') || type,
+    genre_ids: item.genre_ids || [],
+  });
+
+  // 1. Try recommendations endpoint
+  try {
+    const url = `https://api.themoviedb.org/3/${type}/${id}/recommendations`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${TMDB_READ_ACCESS_TOKEN}`,
+      },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.results && data.results.length > 0) {
+        const valid = data.results
+          .filter((item: any) => item.poster_path && item.id !== id)
+          .map(mapResult);
+        if (valid.length > 0) {
+          recommendationsCache.set(cacheKey, valid.slice(0, 12));
+          return valid.slice(0, 12);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch recommendations for ${type} #${id}`, err);
+  }
+
+  // 2. Fallback to similar endpoint
+  try {
+    const url = `https://api.themoviedb.org/3/${type}/${id}/similar`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${TMDB_READ_ACCESS_TOKEN}`,
+      },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.results && data.results.length > 0) {
+        const valid = data.results
+          .filter((item: any) => item.poster_path && item.id !== id)
+          .map(mapResult);
+        if (valid.length > 0) {
+          recommendationsCache.set(cacheKey, valid.slice(0, 12));
+          return valid.slice(0, 12);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch similar for ${type} #${id}`, err);
+  }
+
+  // 3. Fallback with API key query param
+  try {
+    const url = `https://api.themoviedb.org/3/${type}/${id}/recommendations?api_key=${TMDB_API_KEY}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.results && data.results.length > 0) {
+        const valid = data.results
+          .filter((item: any) => item.poster_path && item.id !== id)
+          .map(mapResult);
+        if (valid.length > 0) {
+          recommendationsCache.set(cacheKey, valid.slice(0, 12));
+          return valid.slice(0, 12);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`Fallback fetch recommendations failed for ${type} #${id}`, err);
+  }
+
+  // 4. Default fallback: genre/type-matched curated items
+  const fallback = ALL_CURATED_MEDIA.filter(
+    (m) => m.id !== id && m.media_type === type
+  );
+  const result = (fallback.length >= 4 ? fallback : ALL_CURATED_MEDIA.filter((m) => m.id !== id)).slice(0, 12);
+  recommendationsCache.set(cacheKey, result);
+  return result;
+};
+
+export const GENRE_MAP: Record<number, string> = {
+  28: 'Action',
+  12: 'Adventure',
+  16: 'Animation',
+  35: 'Comedy',
+  80: 'Crime',
+  99: 'Documentary',
+  18: 'Drama',
+  10751: 'Family',
+  14: 'Fantasy',
+  36: 'History',
+  27: 'Horror',
+  10402: 'Music',
+  9648: 'Mystery',
+  10749: 'Romance',
+  878: 'Sci-Fi',
+  10770: 'TV Movie',
+  53: 'Thriller',
+  10752: 'War',
+  37: 'Western',
+  10759: 'Action & Adventure',
+  10762: 'Kids',
+  10763: 'News',
+  10764: 'Reality',
+  10765: 'Sci-Fi & Fantasy',
+  10766: 'Soap',
+  10767: 'Talk',
+  10768: 'War & Politics',
+};
+
+export interface TailoredSuggestionsResult {
+  items: MediaItem[];
+  reason: string;
+  sourceTitles: string[];
+  topGenres: string[];
+}
+
+export const fetchTailoredSuggestions = async (
+  likedMedia: MediaItem[],
+  watchHistory: WatchHistoryItem[],
+  preferredType?: 'movie' | 'tv'
+): Promise<TailoredSuggestionsResult> => {
+  // If no user signals exist yet
+  if ((!likedMedia || likedMedia.length === 0) && (!watchHistory || watchHistory.length === 0)) {
+    return {
+      items: [],
+      reason: 'Like titles or start watching to train your personal recommendations in real time.',
+      sourceTitles: [],
+      topGenres: [],
+    };
+  }
+
+  // 1. Gather all excluded IDs (already liked or in watch history) so suggestions are fresh
+  const excludedIds = new Set<number>([
+    ...(likedMedia || []).map((m) => m.id),
+    ...(watchHistory || []).map((w) => w.id),
+  ]);
+
+  // 2. Select up to 3 priority seeds: liked items first, then watch history
+  const seeds: { id: number; type: 'movie' | 'tv'; title: string }[] = [];
+  const seedIds = new Set<number>();
+
+  for (const item of likedMedia || []) {
+    if (!seedIds.has(item.id) && seeds.length < 3) {
+      seeds.push({ id: item.id, type: item.media_type || 'movie', title: item.title });
+      seedIds.add(item.id);
+    }
+  }
+
+  for (const item of watchHistory || []) {
+    if (!seedIds.has(item.id) && seeds.length < 3) {
+      seeds.push({ id: item.id, type: item.type || 'movie', title: item.title });
+      seedIds.add(item.id);
+    }
+  }
+
+  // 3. Extract top genres from liked and watched items
+  const genreCounts: Record<number, number> = {};
+  for (const m of likedMedia || []) {
+    if (m.genre_ids) {
+      for (const gid of m.genre_ids) {
+        genreCounts[gid] = (genreCounts[gid] || 0) + 3;
+      }
+    }
+    if (m.genres) {
+      for (const g of m.genres) {
+        genreCounts[g.id] = (genreCounts[g.id] || 0) + 3;
+      }
+    }
+  }
+
+  const sortedGenres = Object.entries(genreCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([gid]) => GENRE_MAP[Number(gid)])
+    .filter(Boolean)
+    .slice(0, 3);
+
+  // 4. Query TMDB recommendations for all seeds in parallel
+  const recsPromises = seeds.map((s) => fetchRecommendations(s.id, s.type));
+  const recsResults = await Promise.allSettled(recsPromises);
+
+  const candidateMap = new Map<number, { item: MediaItem; score: number }>();
+
+  recsResults.forEach((res, index) => {
+    if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+      const seedWeight = index === 0 ? 3 : index === 1 ? 2 : 1;
+      res.value.forEach((media, rank) => {
+        if (!excludedIds.has(media.id) && media.poster_path) {
+          const rankScore = (12 - rank) * seedWeight + (media.vote_average || 7.0);
+          const existing = candidateMap.get(media.id);
+          if (existing) {
+            existing.score += rankScore;
+          } else {
+            candidateMap.set(media.id, { item: media, score: rankScore });
+          }
+        }
+      });
+    }
+  });
+
+  let candidates = Array.from(candidateMap.values())
+    .sort((a, b) => b.score - a.score)
+    .map((c) => c.item);
+
+  if (preferredType) {
+    const matched = candidates.filter((item) => item.media_type === preferredType);
+    if (matched.length >= 6) {
+      candidates = matched;
+    } else {
+      // Prioritize matched type at the beginning
+      candidates = [...matched, ...candidates.filter((item) => item.media_type !== preferredType)];
+    }
+  }
+
+  const sortedItems = candidates.slice(0, 18);
+
+  // 5. Construct a natural human-friendly reason
+  let reason = '';
+  const sourceTitles = seeds.map((s) => s.title);
+
+  if (likedMedia && likedMedia.length > 0) {
+    if (sourceTitles.length === 1) {
+      reason = `Because you liked "${sourceTitles[0]}"`;
+    } else if (sourceTitles.length >= 2) {
+      reason = `Based on your likes for "${sourceTitles[0]}" and "${sourceTitles[1]}"`;
+    }
+  } else if (watchHistory && watchHistory.length > 0) {
+    reason = `Because you watched "${watchHistory[0].title}"`;
+  }
+
+  if (sortedGenres.length > 0 && !reason.includes('Based on')) {
+    reason += ` · Tailored to your taste in ${sortedGenres.join(', ')}`;
+  }
+
+  return {
+    items: sortedItems,
+    reason: reason.trim() || 'Curated to match your session viewing taste',
+    sourceTitles,
+    topGenres: sortedGenres,
+  };
 };
 
 // Hardcoded TMDB Credentials

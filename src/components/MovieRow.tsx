@@ -1,7 +1,8 @@
 import React, { useRef } from 'react';
 import type { MediaItem } from '../types/movie';
 import { getPosterUrl } from '../services/tmdb';
-import { ChevronLeft, ChevronRight, Play, Star, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Play, Star, Heart } from 'lucide-react';
+import { useStreamStore } from '../store/useStreamStore';
 
 interface MovieRowProps {
   title: string;
@@ -17,6 +18,8 @@ export const MovieRow: React.FC<MovieRowProps> = ({
   isTop10 = false,
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
+  const toggleLike = useStreamStore((state) => state.toggleLike);
+  const isLiked = useStreamStore((state) => state.isLiked);
 
   const scroll = (direction: 'left' | 'right') => {
     if (rowRef.current) {
@@ -100,9 +103,20 @@ export const MovieRow: React.FC<MovieRowProps> = ({
                       <div className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-110 transition">
                         <Play className="w-4 h-4 fill-black ml-0.5" />
                       </div>
-                      <div className="w-7 h-7 rounded-full bg-zinc-800/80 text-white flex items-center justify-center border border-zinc-600 hover:border-white transition">
-                        <Plus className="w-4 h-4" />
-                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleLike(item);
+                        }}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center transition border cursor-pointer ${
+                          isLiked(item.id)
+                            ? 'bg-rose-600 text-white border-rose-500 shadow-md'
+                            : 'bg-zinc-800/80 text-zinc-300 border-zinc-600 hover:border-white hover:text-white'
+                        }`}
+                        title={isLiked(item.id) ? 'Liked! Click to unlike' : 'Like to train recommendations'}
+                      >
+                        <Heart className={`w-3.5 h-3.5 ${isLiked(item.id) ? 'fill-white text-white' : ''}`} />
+                      </button>
                     </div>
 
                     <h3 className="font-bold text-xs sm:text-sm text-white line-clamp-1">

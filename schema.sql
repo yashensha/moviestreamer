@@ -1,0 +1,62 @@
+-- ==============================================================================
+-- Cloudflare D1 Database Schema for MovieWatcher
+-- Designed for Edge Workers / Cloudflare Pages Functions
+-- ==============================================================================
+
+-- 1. Users / Session table
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  last_active INTEGER NOT NULL
+);
+
+-- 2. Watch History & In-Progress Streaming
+CREATE TABLE IF NOT EXISTS watch_history (
+  id TEXT PRIMARY KEY, -- format: {user_id}:{media_type}:{media_id}
+  user_id TEXT NOT NULL,
+  media_id INTEGER NOT NULL,
+  media_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  overview TEXT,
+  poster_path TEXT,
+  backdrop_path TEXT,
+  release_date TEXT,
+  season INTEGER,
+  episode INTEGER,
+  vote_average REAL,
+  number_of_seasons INTEGER,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_watch_history_user ON watch_history(user_id, updated_at DESC);
+
+-- 3. Liked / Favorited Titles
+CREATE TABLE IF NOT EXISTS liked_titles (
+  id TEXT PRIMARY KEY, -- format: {user_id}:{media_id}
+  user_id TEXT NOT NULL,
+  media_id INTEGER NOT NULL,
+  media_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  poster_path TEXT,
+  backdrop_path TEXT,
+  genre_ids TEXT, -- JSON array of genre IDs: [878, 16, 28]
+  vote_average REAL,
+  liked_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_liked_titles_user ON liked_titles(user_id, liked_at DESC);
+
+-- 4. User Algorithm Model & Recommendation Weights
+-- Extensible table built to store custom machine learning & recommendation models
+CREATE TABLE IF NOT EXISTS user_algorithm_model (
+  user_id TEXT PRIMARY KEY,
+  model_version TEXT NOT NULL DEFAULT 'v1-session-affinity',
+  genre_weights TEXT NOT NULL DEFAULT '{}',       -- JSON: { "878": 4.5, "16": 3.8 }
+  actor_weights TEXT NOT NULL DEFAULT '{}',       -- JSON: { "Bryan Cranston": 2.0 }
+  director_weights TEXT NOT NULL DEFAULT '{}',    -- JSON: { "Christopher Nolan": 3.0 }
+  feature_vector TEXT NOT NULL DEFAULT '[]',      -- JSON float vector for ML embedding models
+  recommendation_cache TEXT NOT NULL DEFAULT '[]',-- JSON list of pre-scored TMDB IDs
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_user_algorithm_model_updated ON user_algorithm_model(updated_at DESC);
