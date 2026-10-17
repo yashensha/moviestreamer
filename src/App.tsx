@@ -16,7 +16,9 @@ import { TailoredRecommendationsRow } from './components/TailoredRecommendations
 import { InnerDetailPage } from './components/InnerDetailPage';
 import { SearchResults } from './components/SearchResults';
 import { ProfilePage } from './components/ProfilePage';
+import { AuthModal } from './components/AuthModal';
 import { useStreamStore } from './store/useStreamStore';
+import { useAuthStore } from './store/useAuthStore';
 
 function BrowseView({
   tab,
@@ -204,6 +206,8 @@ export function App() {
   const [seriesList, setSeriesList] = useState<MediaItem[]>(CURATED_SERIES);
   const [moviesList, setMoviesList] = useState<MediaItem[]>(CURATED_MOVIES);
 
+  const checkSession = useAuthStore((state) => state.checkSession);
+
   // Initial load
   const loadMedia = async () => {
     const [trend, popularTv] = await Promise.all([
@@ -223,7 +227,8 @@ export function App() {
 
   useEffect(() => {
     loadMedia();
-  }, []);
+    checkSession();
+  }, [checkSession]);
 
   const handleOpenItem = (item: MediaItem) => {
     const type = item.media_type || 'movie';
@@ -237,93 +242,96 @@ export function App() {
   const allAvailableMedia = [...trending, ...seriesList, ...ALL_CURATED_MEDIA];
 
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={
-          <BrowseView
-            tab="home"
-            trending={trending}
-            seriesList={seriesList}
-            moviesList={moviesList}
-            onOpenItem={handleOpenItem}
-          />
-        }
-      />
-      <Route
-        path="/series"
-        element={
-          <BrowseView
-            tab="tv"
-            trending={trending}
-            seriesList={seriesList}
-            moviesList={moviesList}
-            onOpenItem={handleOpenItem}
-          />
-        }
-      />
-      <Route
-        path="/tv"
-        element={
-          <BrowseView
-            tab="tv"
-            trending={trending}
-            seriesList={seriesList}
-            moviesList={moviesList}
-            onOpenItem={handleOpenItem}
-          />
-        }
-      />
-      <Route
-        path="/movies"
-        element={
-          <BrowseView
-            tab="movie"
-            trending={trending}
-            seriesList={seriesList}
-            moviesList={moviesList}
-            onOpenItem={handleOpenItem}
-          />
-        }
-      />
-      <Route
-        path="/movie"
-        element={
-          <BrowseView
-            tab="movie"
-            trending={trending}
-            seriesList={seriesList}
-            moviesList={moviesList}
-            onOpenItem={handleOpenItem}
-          />
-        }
-      />
-      <Route
-        path="/profile"
-        element={<ProfilePage onOpenItem={handleOpenItem} />}
-      />
-      <Route
-        path="/history"
-        element={<ProfilePage onOpenItem={handleOpenItem} />}
-      />
-      <Route
-        path="/tv/:id"
-        element={<InnerDetailPage allMedia={allAvailableMedia} />}
-      />
-      <Route
-        path="/series/:id"
-        element={<InnerDetailPage allMedia={allAvailableMedia} />}
-      />
-      <Route
-        path="/movie/:id"
-        element={<InnerDetailPage allMedia={allAvailableMedia} />}
-      />
-      <Route
-        path="/watch/:type/:id"
-        element={<InnerDetailPage allMedia={allAvailableMedia} />}
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <BrowseView
+              tab="home"
+              trending={trending}
+              seriesList={seriesList}
+              moviesList={moviesList}
+              onOpenItem={handleOpenItem}
+            />
+          }
+        />
+        <Route
+          path="/series"
+          element={
+            <BrowseView
+              tab="tv"
+              trending={trending}
+              seriesList={seriesList}
+              moviesList={moviesList}
+              onOpenItem={handleOpenItem}
+            />
+          }
+        />
+        <Route
+          path="/tv"
+          element={
+            <BrowseView
+              tab="tv"
+              trending={trending}
+              seriesList={seriesList}
+              moviesList={moviesList}
+              onOpenItem={handleOpenItem}
+            />
+          }
+        />
+        <Route
+          path="/movies"
+          element={
+            <BrowseView
+              tab="movie"
+              trending={trending}
+              seriesList={seriesList}
+              moviesList={moviesList}
+              onOpenItem={handleOpenItem}
+            />
+          }
+        />
+        <Route
+          path="/movie"
+          element={
+            <BrowseView
+              tab="movie"
+              trending={trending}
+              seriesList={seriesList}
+              moviesList={moviesList}
+              onOpenItem={handleOpenItem}
+            />
+          }
+        />
+        <Route
+          path="/profile"
+          element={<ProfilePage onOpenItem={handleOpenItem} />}
+        />
+        <Route
+          path="/history"
+          element={<ProfilePage onOpenItem={handleOpenItem} />}
+        />
+        <Route
+          path="/tv/:id"
+          element={<InnerDetailPage allMedia={allAvailableMedia} />}
+        />
+        <Route
+          path="/series/:id"
+          element={<InnerDetailPage allMedia={allAvailableMedia} />}
+        />
+        <Route
+          path="/movie/:id"
+          element={<InnerDetailPage allMedia={allAvailableMedia} />}
+        />
+        <Route
+          path="/watch/:type/:id"
+          element={<InnerDetailPage allMedia={allAvailableMedia} />}
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <AuthModal />
+    </>
   );
 }
 

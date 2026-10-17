@@ -14,8 +14,11 @@ import {
   Clock,
   Sparkles,
   User,
-  RotateCcw
+  RotateCcw,
+  LogOut,
+  LogIn
 } from 'lucide-react';
+import { useAuthStore } from '../store/useAuthStore';
 
 interface ProfilePageProps {
   onOpenItem?: (item: MediaItem) => void;
@@ -28,6 +31,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
   const removeFromHistory = useStreamStore((state) => state.removeFromHistory);
   const clearHistory = useStreamStore((state) => state.clearHistory);
   const toggleLike = useStreamStore((state) => state.toggleLike);
+
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+  const openLoginModal = useAuthStore((state) => state.openLoginModal);
 
   const [activeTab, setActiveTab] = useState<'all' | 'history' | 'liked'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -110,22 +117,47 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem }) => {
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
               <div className="flex items-center gap-5">
                 {/* Netflix Style Red Avatar */}
-                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-tr from-rose-700 via-rose-600 to-red-500 rounded-none flex items-center justify-center text-white shadow-xl shadow-rose-950/40 border-2 border-white/20 flex-shrink-0">
-                  <User className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-tr from-rose-700 via-rose-600 to-red-500 rounded-none flex items-center justify-center text-white shadow-xl shadow-rose-950/40 border-2 border-white/20 flex-shrink-0 text-2xl font-black uppercase">
+                  {user ? (user.name ? user.name[0] : user.email[0]) : <User className="w-8 h-8 sm:w-10 sm:h-10 text-white" />}
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-3">
                     <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                      My Profile
+                      {user ? (user.name || user.email.split('@')[0]) : 'My Profile'}
                     </h1>
-                    <span className="text-[10px] font-bold uppercase tracking-wider bg-zinc-800 text-zinc-300 px-2 py-0.5 border border-zinc-700 rounded-none">
-                      Active Session
-                    </span>
+                    {user ? (
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-950/80 text-emerald-300 px-2.5 py-0.5 border border-emerald-800 rounded-none">
+                        Member
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-zinc-800 text-zinc-300 px-2 py-0.5 border border-zinc-700 rounded-none">
+                        Guest Session
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs sm:text-sm text-zinc-400">
-                    Your personal viewing history, liked titles, and learned taste profile.
+                    {user
+                      ? `Signed in as ${user.email} • Synced to Cloudflare D1`
+                      : 'Viewing as guest. Sign in to permanently save your history and sync across devices.'}
                   </p>
+                  <div className="pt-1 flex items-center gap-3">
+                    {user ? (
+                      <button
+                        onClick={() => logout()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs font-medium text-zinc-300 hover:text-white transition cursor-pointer"
+                      >
+                        <LogOut className="w-3.5 h-3.5" /> Sign Out
+                      </button>
+                    ) : (
+                      <button
+                        onClick={openLoginModal}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#E50914] hover:bg-[#c90812] text-xs font-semibold text-white tracking-wide transition cursor-pointer shadow-md shadow-rose-950/30"
+                      >
+                        <LogIn className="w-3.5 h-3.5" /> Sign In / Register
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 

@@ -33,7 +33,20 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
 
     const { userId, watchHistory = [], likedMedia = [] } = body;
 
-    if (!userId) {
+    let targetUserId = userId;
+    const authHeader = request.headers.get('Authorization') || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (token) {
+      const session = await db
+        .prepare('SELECT user_id FROM sessions WHERE token = ?1 AND expires_at > ?2')
+        .bind(token, Date.now())
+        .first<{ user_id: string }>();
+      if (session?.user_id) {
+        targetUserId = session.user_id;
+      }
+    }
+
+    if (!targetUserId) {
       return new Response(
         JSON.stringify({ error: 'Missing userId parameter' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
@@ -47,7 +60,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       `INSERT INTO users (id, created_at, last_active)
        VALUES (?1, ?2, ?3)
        ON CONFLICT(id) DO UPDATE SET last_active = ?3`
-    ).bind(userId, now, now).run();
+    ).bind(targetUserId, now, now).run();
 
     // 2. Compute Algorithm Model: Genre Affinity Weights
     const genreWeights: Record<string, number> = {};
@@ -60,14 +73,14 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       }
 
       // Upsert liked titles in D1
-      const recordId = `${userId}:${item.id}`;
+      const recordId = `${targetUserId}:${item.id}`;
       await db.prepare(
         `INSERT INTO liked_titles (id, user_id, media_id, media_type, title, poster_path, backdrop_path, genre_ids, vote_average, liked_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT(id) DO UPDATE SET liked_at = ?10`
       ).bind(
         recordId,
-        userId,
+        targetUserId,
         item.id,
         item.media_type || 'movie',
         item.title || 'Untitled',
@@ -81,14 +94,14 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
 
     // Watch history contributes +1.5 weight per title
     for (const item of watchHistory) {
-      const recordId = `${userId}:${item.type}:${item.id}`;
+      const recordId = `${targetUserId}:${item.type}:${item.id}`;
       await db.prepare(
         `INSERT INTO watch_history (id, user_id, media_id, media_type, title, overview, poster_path, backdrop_path, release_date, season, episode, vote_average, number_of_seasons, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(id) DO UPDATE SET season = ?10, episode = ?11, updated_at = ?14`
       ).bind(
         recordId,
-        userId,
+        targetUserId,
         item.id,
         item.type || 'movie',
         item.title || 'Untitled',
@@ -110,7 +123,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
        VALUES (?1, ?2, ?3, '{}', '{}', '[]', '[]', ?4)
        ON CONFLICT(user_id) DO UPDATE SET genre_weights = ?3, updated_at = ?4`
     ).bind(
-      userId,
+      targetUserId,
       'v1-session-affinity',
       JSON.stringify(genreWeights),
       now

@@ -22,6 +22,11 @@ export const getUserId = (): string => {
   return userId;
 };
 
+export const getAuthToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('moviewatcher_auth_token');
+};
+
 let syncTimeout: any = null;
 
 /**
@@ -41,9 +46,15 @@ export const syncToEdge = (
   syncTimeout = setTimeout(async () => {
     try {
       const userId = getUserId();
+      const token = getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       await fetch('/api/user/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           userId,
           watchHistory,
@@ -62,7 +73,15 @@ export const syncToEdge = (
 export const fetchEdgeModel = async () => {
   try {
     const userId = getUserId();
-    const res = await fetch(`/api/user/model?userId=${encodeURIComponent(userId)}`);
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`/api/user/model?userId=${encodeURIComponent(userId)}`, {
+      headers,
+    });
     if (res.ok) {
       return await res.json();
     }

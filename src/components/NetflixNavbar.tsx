@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Search, X, Film, Tv, Heart, User } from 'lucide-react';
 import { useStreamStore } from '../store/useStreamStore';
+import { useAuthStore } from '../store/useAuthStore';
 
 interface NetflixNavbarProps {
   activeTab?: 'home' | 'tv' | 'movie' | 'history' | 'profile';
@@ -26,6 +27,8 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
   const likedMedia = useStreamStore((state) => state.likedMedia);
+  const user = useAuthStore((state) => state.user);
+  const openLoginModal = useAuthStore((state) => state.openLoginModal);
 
   const currentTab = (
     location.pathname.startsWith('/profile') || location.pathname.startsWith('/history')
@@ -200,18 +203,33 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
           </div>
         </div>
 
-        {/* Profile Avatar Quick Button */}
-        <button
-          onClick={() => handleNav('profile', '/profile')}
-          className={`w-8 h-8 rounded-none bg-gradient-to-tr from-rose-700 via-rose-600 to-red-500 flex items-center justify-center text-white border transition cursor-pointer shadow-md ${
-            currentTab === 'profile'
-              ? 'border-white scale-105'
-              : 'border-white/20 hover:border-white/80'
-          }`}
-          title="Open Profile, Liked Titles & History"
-        >
-          <User className="w-4 h-4 text-white" />
-        </button>
+        {/* Sign In button or User Avatar */}
+        {user ? (
+          <button
+            onClick={() => handleNav('profile', '/profile')}
+            className={`flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-none bg-zinc-900/90 border transition cursor-pointer shadow-md ${
+              currentTab === 'profile'
+                ? 'border-white text-white'
+                : 'border-zinc-800 text-zinc-300 hover:border-zinc-600 hover:text-white'
+            }`}
+            title={`Logged in as ${user.email}. Click for Profile`}
+          >
+            <div className="w-6 h-6 bg-gradient-to-tr from-rose-700 via-rose-600 to-red-500 flex items-center justify-center text-white text-xs font-bold uppercase">
+              {user.name ? user.name[0] : user.email[0]}
+            </div>
+            <span className="hidden md:inline text-xs font-medium max-w-[100px] truncate">
+              {user.name || user.email.split('@')[0]}
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={openLoginModal}
+            className="px-3.5 py-1.5 bg-[#E50914] hover:bg-[#c90812] active:scale-95 text-xs font-semibold text-white tracking-wide transition cursor-pointer shadow-md shadow-rose-950/40"
+          >
+            Sign In
+          </button>
+        )}
       </div>
     </header>
     </div>

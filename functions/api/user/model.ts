@@ -13,9 +13,23 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     const { request, env } = context;
     const db = env.moviewatcher_db || env.DB;
     const url = new URL(request.url);
-    const userId = url.searchParams.get('userId');
+    let targetUserId = url.searchParams.get('userId');
 
-    if (!userId) {
+    if (!targetUserId) {
+      const authHeader = request.headers.get('Authorization') || '';
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+      if (token && db) {
+        const session = await db
+          .prepare('SELECT user_id FROM sessions WHERE token = ?1 AND expires_at > ?2')
+          .bind(token, Date.now())
+          .first<{ user_id: string }>();
+        if (session?.user_id) {
+          targetUserId = session.user_id;
+        }
+      }
+    }
+
+    if (!targetUserId) {
       return new Response(
         JSON.stringify({ error: 'Missing userId parameter' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
@@ -37,17 +51,17 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     // 1. Fetch Algorithm Model
     const modelRecord = await db.prepare(
       `SELECT * FROM user_algorithm_model WHERE user_id = ?1`
-    ).bind(userId).first();
+    ).bind(targetUserId).first();
 
     // 2. Fetch Watch History
     const historyResults = await db.prepare(
       `SELECT * FROM watch_history WHERE user_id = ?1 ORDER BY updated_at DESC LIMIT 30`
-    ).bind(userId).all();
+    ).bind(targetUserId).all();
 
     // 3. Fetch Liked Titles
     const likedResults = await db.prepare(
       `SELECT * FROM liked_titles WHERE user_id = ?1 ORDER BY liked_at DESC LIMIT 50`
-    ).bind(userId).all();
+    ).bind(targetUserId).all();
 
     return new Response(
       JSON.stringify({

@@ -3,12 +3,26 @@
 -- Designed for Edge Workers / Cloudflare Pages Functions
 -- ==============================================================================
 
--- 1. Users / Session table
+-- 1. Users table (Supports email/password authentication & guest sessions)
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
+  email TEXT UNIQUE,
+  password_hash TEXT,
+  name TEXT,
   created_at INTEGER NOT NULL,
   last_active INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- 1b. Sessions table for authentication tokens
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
 -- 2. Watch History & In-Progress Streaming
 CREATE TABLE IF NOT EXISTS watch_history (
