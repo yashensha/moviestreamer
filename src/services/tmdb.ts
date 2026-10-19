@@ -831,24 +831,71 @@ export const multiSearchWithTMDB = async (query: string): Promise<MultiSearchRes
     profile_path: item.profile_path ?? null,
     known_for_department: item.known_for_department || 'Acting',
     known_for: (item.known_for || [])
-      .filter((k: any) => k.media_type === 'movie' || k.media_type === 'tv')
+      .filter((k: any) => (k.media_type === 'movie' || k.media_type === 'tv') && (k.poster_path || k.backdrop_path))
       .map(parseMediaItem),
   });
+
+  const finalizeResults = (rawMedia: any[], rawPeople: any[]): MultiSearchResult => {
+    const qLower = clean.toLowerCase();
+
+    // 1. Filter out items without posters or backdrops
+    let media = rawMedia
+      .filter((item: any) => (item.media_type === 'movie' || item.media_type === 'tv') && (item.poster_path || item.backdrop_path))
+      .map(parseMediaItem);
+
+    // 2. Sort by relevance: Exact matches first, then popularity / vote_count
+    media.sort((a, b) => {
+      const aExact = a.title.toLowerCase() === qLower ? 2 : a.title.toLowerCase().startsWith(qLower) ? 1 : 0;
+      const bExact = b.title.toLowerCase() === qLower ? 2 : b.title.toLowerCase().startsWith(qLower) ? 1 : 0;
+      if (aExact !== bExact) return bExact - aExact;
+      return (b.vote_count || 0) - (a.vote_count || 0);
+    });
+
+    const people = rawPeople
+      .filter((item: any) => item.media_type === 'person')
+      .map(parsePersonItem);
+
+    // 3. Merge matching local curated items at the top if title matches
+    const localMatches = ALL_CURATED_MEDIA.filter((m) =>
+      m.title.toLowerCase().includes(qLower)
+    );
+
+    const seen = new Set<number>();
+    const mergedMedia: MediaItem[] = [];
+
+    // Prioritize exact curated match if any
+    for (const item of [...localMatches, ...media]) {
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        mergedMedia.push(item);
+      }
+    }
+
+    // 4. If search query matches an actor or director with known works and few media results, add their known works
+    if (mergedMedia.length < 4 && people.length > 0) {
+      for (const p of people) {
+        if (p.known_for) {
+          for (const k of p.known_for) {
+            if (!seen.has(k.id)) {
+              seen.add(k.id);
+              mergedMedia.push(k);
+            }
+          }
+        }
+      }
+    }
+
+    return { media: mergedMedia, people };
+  };
 
   // Method 1: Use tmdb-ts client with the Read Access Token
   try {
     const client = getTmdbClient();
     const res = await client.search.multi({ query: clean });
     if (res && res.results && res.results.length > 0) {
-      const media = res.results
-        .filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv')
-        .map(parseMediaItem);
-      const people = res.results
-        .filter((item: any) => item.media_type === 'person')
-        .map(parsePersonItem);
-
-      if (media.length > 0 || people.length > 0) {
-        return { media, people };
+      const result = finalizeResults(res.results, res.results);
+      if (result.media.length > 0 || result.people.length > 0) {
+        return result;
       }
     }
   } catch (err) {
@@ -862,13 +909,7 @@ export const multiSearchWithTMDB = async (query: string): Promise<MultiSearchRes
     if (res.ok) {
       const data = await res.json();
       if (data && data.results && data.results.length > 0) {
-        const media = data.results
-          .filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv')
-          .map(parseMediaItem);
-        const people = data.results
-          .filter((item: any) => item.media_type === 'person')
-          .map(parsePersonItem);
-        return { media, people };
+        return finalizeResults(data.results, data.results);
       }
     }
   } catch (err) {

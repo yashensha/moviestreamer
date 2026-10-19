@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { MediaItem, PersonItem } from '../types/movie';
 import { getPosterUrl, fetchPersonCombinedCredits } from '../services/tmdb';
-import { Play, Star, Film, Tv, Heart, Check, Bookmark, User, ArrowLeft, Loader2 } from 'lucide-react';
-import { useStreamStore } from '../store/useStreamStore';
+import { Film, Tv, User, ArrowLeft, Loader2 } from 'lucide-react';
+import { NetflixTallCard } from './NetflixTallCard';
 
 interface SearchResultsProps {
   query: string;
@@ -21,17 +22,11 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
   onSelect,
   onClear,
 }) => {
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<'all' | 'movie' | 'tv' | 'people'>('all');
   const [selectedPerson, setSelectedPerson] = useState<PersonItem | null>(null);
   const [personCredits, setPersonCredits] = useState<MediaItem[]>([]);
   const [loadingCredits, setLoadingCredits] = useState(false);
-
-  const toggleLike = useStreamStore((state) => state.toggleLike);
-  const isLiked = useStreamStore((state) => state.isLiked);
-  const toggleWatched = useStreamStore((state) => state.toggleWatched);
-  const isWatched = useStreamStore((state) => state.isWatched);
-  const toggleWatchlist = useStreamStore((state) => state.toggleWatchlist);
-  const isInWatchlist = useStreamStore((state) => state.isInWatchlist);
 
   const filteredMedia = results.filter((item) => {
     if (filter === 'all') return true;
@@ -45,6 +40,11 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
     const credits = await fetchPersonCombinedCredits(person.id);
     setPersonCredits(credits.length > 0 ? credits : (person.known_for || []));
     setLoadingCredits(false);
+  };
+
+  const handlePlayMedia = (item: MediaItem) => {
+    const targetType = item.media_type || 'movie';
+    navigate(`/${targetType}/${item.id}?play=1`);
   };
 
   return (
@@ -158,18 +158,15 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
             <div className="flex items-center justify-between text-xs text-zinc-400">
               <span>{personCredits.length} titles in filmography</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
               {personCredits.map((item) => (
-                <SearchResultCard
+                <NetflixTallCard
                   key={`person-credit-${item.id}`}
                   item={item}
+                  imageType="backdrop"
+                  className="w-full"
                   onSelect={onSelect}
-                  isWatched={isWatched(item.id)}
-                  isLiked={isLiked(item.id)}
-                  isInWatchlist={isInWatchlist(item.id)}
-                  onToggleWatched={() => toggleWatched(item)}
-                  onToggleLike={() => toggleLike(item)}
-                  onToggleWatchlist={() => toggleWatchlist(item)}
+                  onPlay={() => handlePlayMedia(item)}
                 />
               ))}
             </div>
@@ -247,18 +244,15 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
                   <span>Movies & Series ({filteredMedia.length})</span>
                 </h3>
               )}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
                 {filteredMedia.map((item) => (
-                  <SearchResultCard
+                  <NetflixTallCard
                     key={`search-item-${item.media_type}-${item.id}`}
                     item={item}
+                    imageType="backdrop"
+                    className="w-full"
                     onSelect={onSelect}
-                    isWatched={isWatched(item.id)}
-                    isLiked={isLiked(item.id)}
-                    isInWatchlist={isInWatchlist(item.id)}
-                    onToggleWatched={() => toggleWatched(item)}
-                    onToggleLike={() => toggleLike(item)}
-                    onToggleWatchlist={() => toggleWatchlist(item)}
+                    onPlay={() => handlePlayMedia(item)}
                   />
                 ))}
               </div>
@@ -266,126 +260,6 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
           )}
         </div>
       )}
-    </div>
-  );
-};
-
-interface SearchResultCardProps {
-  item: MediaItem;
-  onSelect: (item: MediaItem) => void;
-  isWatched: boolean;
-  isLiked: boolean;
-  isInWatchlist: boolean;
-  onToggleWatched: () => void;
-  onToggleLike: () => void;
-  onToggleWatchlist: () => void;
-}
-
-const SearchResultCard: React.FC<SearchResultCardProps> = ({
-  item,
-  onSelect,
-  isWatched,
-  isLiked,
-  isInWatchlist,
-  onToggleWatched,
-  onToggleLike,
-  onToggleWatchlist,
-}) => {
-  const poster = getPosterUrl(item.poster_path);
-  const year = item.release_date ? new Date(item.release_date).getFullYear() : '';
-
-  return (
-    <div
-      onClick={() => onSelect(item)}
-      className="group relative bg-[#121212] rounded-[3px] overflow-hidden border border-zinc-800/90 hover:border-zinc-500 transition-all duration-300 hover:scale-105 cursor-pointer shadow-lg flex flex-col"
-    >
-      <div className="relative aspect-[2/3] w-full bg-zinc-950 overflow-hidden">
-        <img
-          src={poster}
-          alt={item.title}
-          loading="lazy"
-          className="w-full h-full object-cover transition duration-300 group-hover:brightness-105"
-        />
-
-        {/* Center Play Icon on Hover */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <div className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-xl">
-            <Play className="w-5 h-5 fill-black ml-0.5" />
-          </div>
-        </div>
-
-        {/* Watched Badge top-left */}
-        {isWatched && (
-          <div className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-emerald-600 text-white text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-[2px] shadow border border-emerald-400/40">
-            <Check className="w-2.5 h-2.5 stroke-[3]" />
-            <span>Watched</span>
-          </div>
-        )}
-
-        {/* Top-Right Action Pill (Watchlist, Watched, Like) */}
-        <div className="absolute top-2 right-2 z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {/* Watchlist Button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleWatchlist();
-            }}
-            className={`w-7 h-7 rounded-[3px] flex items-center justify-center transition cursor-pointer backdrop-blur-md border border-white/20 ${
-              isInWatchlist
-                ? 'bg-amber-600 text-white border-amber-400'
-                : 'bg-black/75 text-zinc-300 hover:text-white hover:bg-black'
-            }`}
-            title={isInWatchlist ? 'In your Watchlist (Click to remove)' : 'Add to Watchlist'}
-          >
-            <Bookmark className={`w-3.5 h-3.5 ${isInWatchlist ? 'fill-white stroke-[2.5]' : ''}`} />
-          </button>
-
-          {/* Mark Watched Button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleWatched();
-            }}
-            className={`w-7 h-7 rounded-[3px] flex items-center justify-center transition cursor-pointer backdrop-blur-md border border-white/20 ${
-              isWatched
-                ? 'bg-emerald-600 text-white border-emerald-400'
-                : 'bg-black/75 text-zinc-300 hover:text-white hover:bg-black'
-            }`}
-            title={isWatched ? 'Watched (Click to unmark)' : 'Mark as watched'}
-          >
-            <Check className={`w-3.5 h-3.5 stroke-[2.5] ${isWatched ? 'text-white' : ''}`} />
-          </button>
-
-          {/* Like Button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleLike();
-            }}
-            className={`w-7 h-7 rounded-[3px] flex items-center justify-center transition cursor-pointer backdrop-blur-md border border-white/20 ${
-              isLiked
-                ? 'bg-[#E50914] text-white border-rose-500'
-                : 'bg-black/75 text-zinc-300 hover:text-white hover:bg-black'
-            }`}
-            title={isLiked ? 'Liked' : 'Like'}
-          >
-            <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-white text-white' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      <div className="p-2.5 flex-grow flex flex-col justify-between">
-        <h4 className="font-bold text-xs sm:text-sm text-white truncate group-hover:text-rose-400 transition-colors">
-          {item.title}
-        </h4>
-        <div className="flex items-center justify-between text-[11px] text-zinc-400 mt-1">
-          <span className="text-zinc-500">{year || '2024'}</span>
-          <span className="flex items-center gap-0.5 text-amber-400 font-semibold">
-            <Star className="w-2.5 h-2.5 fill-amber-400" />
-            {item.vote_average ? item.vote_average.toFixed(1) : ''}
-          </span>
-        </div>
-      </div>
     </div>
   );
 };

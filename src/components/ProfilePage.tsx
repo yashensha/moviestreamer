@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import type { MediaItem, UserRatingItem, PersonItem } from '../types/movie';
 import { useStreamStore } from '../store/useStreamStore';
-import { getPosterUrl, multiSearchWithTMDB } from '../services/tmdb';
+import { multiSearchWithTMDB } from '../services/tmdb';
 import { NetflixNavbar } from './NetflixNavbar';
 import { SearchResults } from './SearchResults';
 import { LetterboxdImportModal } from './LetterboxdImportModal';
@@ -11,7 +11,6 @@ import { NetflixTallCard } from './NetflixTallCard';
 import {
   Play,
   Star,
-  Trash2,
   Heart,
   Clock,
   Sparkles,
@@ -27,7 +26,6 @@ import {
   ShieldAlert,
   Cpu,
   Bookmark,
-  Check,
   Compass,
   Clapperboard,
   Users,
@@ -60,7 +58,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
   const removeFromWatched = useStreamStore((state) => state.removeFromWatched);
   const clearHistory = useStreamStore((state) => state.clearHistory);
   const toggleLike = useStreamStore((state) => state.toggleLike);
-  const markAsWatched = useStreamStore((state) => state.markAsWatched);
   const isWatched = useStreamStore((state) => state.isWatched);
   const dismissedHistoryIds = useStreamStore((state) => state.dismissedHistoryIds) || [];
   const deletedWatchedIds = useStreamStore((state) => state.deletedWatchedIds) || [];
@@ -201,15 +198,15 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
   };
 
   // Watched List Filters & Sorting
-  const [watchedFilter, setWatchedFilter] = useState<'all' | 'rated' | 'letterboxd' | 'high'>('all');
+  const [watchedFilter] = useState<'all' | 'rated' | 'letterboxd' | 'high'>('all');
   const [watchedSort, setWatchedSort] = useState<'recent' | 'rating' | 'year' | 'title'>('recent');
 
   // Matrix Affinity Tab (Genres vs Directors vs Actors)
   const [affinityTab, setAffinityTab] = useState<'genres' | 'directors' | 'actors'>('genres');
 
   // Watchlist Filters & Sorting
-  const [watchlistFilter, setWatchlistFilter] = useState<'all' | 'movie' | 'tv'>('all');
-  const [watchlistSort, setWatchlistSort] = useState<'recent' | 'rating' | 'year' | 'title'>('recent');
+  const [watchlistFilter] = useState<'all' | 'movie' | 'tv'>('all');
+  const [watchlistSort] = useState<'recent' | 'rating' | 'year' | 'title'>('recent');
 
   // Filtered & Sorted Watchlist items
   const filteredWatchlistItems = useMemo(() => {
@@ -900,6 +897,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
               return true;
             });
 
+            if (continueWatchingItems.length === 0 && activeTab !== 'history') return null;
+
             return (
               <section className="space-y-4">
                 <div className="flex items-center justify-between ">
@@ -908,7 +907,40 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
                   </h2>
                 </div>
 
-             
+                {continueWatchingItems.length === 0 ? (
+                  <div className="p-8 text-center bg-zinc-900/30 border border-dashed border-zinc-800 space-y-2">
+                    <p className="text-sm font-semibold text-zinc-400">No active streaming session</p>
+                    <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                      Any movie or series you stream will appear here so you can easily resume right where you left off.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 py-4">
+                    {continueWatchingItems.slice(0, 12).map((item) => (
+                      <NetflixTallCard
+                        key={`continue-${item.type}-${item.id}`}
+                        item={{
+                          id: item.id,
+                          title: item.title,
+                          overview: item.overview || '',
+                          poster_path: item.poster_path,
+                          backdrop_path: item.backdrop_path ?? null,
+                          release_date: item.release_date || '',
+                          vote_average: item.vote_average ?? 8.0,
+                          media_type: item.type || 'movie',
+                          number_of_seasons: item.number_of_seasons,
+                        }}
+                        className="w-full"
+                        imageType="backdrop"
+                        onSelect={(selected) =>
+                          onOpenItem ? onOpenItem(selected) : handleSelectItem(selected)
+                        }
+                        onPlay={() => handlePlayItem(item.type, item.id, item.season, item.episode)}
+                        onRemove={() => removeFromHistory(item.id)}
+                      />
+                    ))}
+                  </div>
+                )}
               </section>
             );
           })()}

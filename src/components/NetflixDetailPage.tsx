@@ -776,7 +776,7 @@ export const NetflixDetailPage: React.FC = () => {
                     <NetflixTallCard
                       key={item.id}
                       item={item}
-                      imageType="poster"
+                      imageType="backdrop"
                       onSelect={handleSelectRelated}
                       onPlay={() => {
                         const targetType = item.media_type || 'movie';
