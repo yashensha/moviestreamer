@@ -1,5 +1,5 @@
 import type { MediaItem, MediaType, UserRatingItem, WatchHistoryItem } from '../types/movie';
-import { GENRE_MAP } from './tmdb';
+import { GENRE_MAP, fetchRecommendations, TMDB_READ_ACCESS_TOKEN } from './tmdb';
 import {
   computeUnifiedInteractionMatrix,
   type TasteMatrixProfile,
@@ -165,15 +165,21 @@ export async function generateFullRecommendationPipeline(
   watchHistory: WatchHistoryItem[],
   likedMedia: MediaItem[],
   userRatings: UserRatingItem[] = [],
-  options?: {
-    preferredType?: MediaType;
-  }
+  dislikedMediaOrOptions?: MediaItem[] | { preferredType?: MediaType },
+  maybeOptions?: { preferredType?: MediaType }
 ): Promise<CuratedRecommendationRows> {
+  const dislikedMedia: MediaItem[] = Array.isArray(dislikedMediaOrOptions) ? dislikedMediaOrOptions : [];
+  const options =
+    !Array.isArray(dislikedMediaOrOptions) && typeof dislikedMediaOrOptions === 'object'
+      ? dislikedMediaOrOptions
+      : maybeOptions;
+
   // Step 2: Compute Unified Taste Matrix
   const matrix: TasteMatrixProfile = computeUnifiedInteractionMatrix(
     watchHistory,
     likedMedia,
-    userRatings
+    userRatings,
+    dislikedMedia
   );
 
   // If cold-start (no interactions yet), return empty sets
@@ -186,11 +192,12 @@ export async function generateFullRecommendationPipeline(
     };
   }
 
-  // Build exclusion set: all watched, liked, and rated items
+  // Build exclusion set: all watched, liked, rated, and explicitly disliked items
   const completedIds = new Set<number>();
   watchHistory.forEach((w) => completedIds.add(w.id));
   likedMedia.forEach((l) => completedIds.add(l.id));
   userRatings.forEach((r) => completedIds.add(r.id));
+  dislikedMedia.forEach((d) => completedIds.add(d.id));
   matrix.hardFilteredIds.forEach((h) => completedIds.add(h));
 
   // Step 3: Run Content-Based Graph Generator (yields ~100-150 fresh candidates)
@@ -211,7 +218,16 @@ export async function generateFullRecommendationPipeline(
     totalUserWeight += weight;
 
     const genreText = (seed.genre_ids || []).map((id) => GENRE_MAP[id] || '').filter(Boolean);
-    const seedTags = [...(seed.subgenres || []), ...(seed.clusters || []), ...genreText];
+    const directorText = (seed.directors || []).map((d) => `director ${d}`);
+    const castText = (seed.cast || []).map((c) => `starring ${c}`);
+    const seedTags = [
+      ...(seed.thematicTags || []),
+      ...(seed.subgenres || []),
+      ...(seed.clusters || []),
+      ...directorText,
+      ...castText,
+      ...genreText,
+    ];
     const seedVector = createLatentSemanticVector(seed.title, seed.overview || '', seedTags);
 
     for (const [dim, val] of seedVector.entries()) {
@@ -279,11 +295,11 @@ export async function generateFullRecommendationPipeline(
     if (enrichedSubgenres.length > 0) {
       tags.push(enrichedSubgenres[0]);
     }
-    if (enrichedClusters.length > 0 && tags.length < 3) {
-      tags.push(enrichedClusters[0]);
-    }
     const resolvedDirector = candidate.matchedDirector || knownData.director;
     if (resolvedDirector) tags.push(`Dir. ${resolvedDirector}`);
+    if (candidate.matchedCast && candidate.matchedCast.length > 0 && tags.length < 3) {
+      tags.push(candidate.matchedCast[0]);
+    }
     if (candidate.matchedDirectRec && tags.length < 3) tags.push('Direct Match');
     if (enrichedTags.length > 0 && tags.length < 3) {
       tags.push(enrichedTags[0]);
@@ -380,3 +396,115 @@ export async function generateFullRecommendationPipeline(
     modelTimestamp: Date.now(),
   };
 }
+
+/**
+ * Generates tailored recommendations specifically related to a given media title,
+ * personalized through the user's taste matrix and micro-genre affinities.
+ */
+export async function generateItemSpecificRecommendations(
+  targetItem: MediaItem,
+  watchHistory: WatchHistoryItem[] = [],
+  likedMedia: MediaItem[] = [],
+  userRatings: UserRatingItem[] = [],
+  dislikedMedia: MediaItem[] = [],
+  limit = 18
+): Promise<MediaItem[]> {
+  const targetId = targetItem.id;
+  const targetType = targetItem.media_type || 'movie';
+
+  // 1. Compute user taste matrix for personalization & exclusion
+  const matrix = computeUnifiedInteractionMatrix(watchHistory, likedMedia, userRatings, dislikedMedia);
+
+  const completedIds = new Set<number>();
+  completedIds.add(targetId);
+  watchHistory.forEach((w) => completedIds.add(w.id));
+  likedMedia.forEach((l) => completedIds.add(l.id));
+  userRatings.forEach((r) => completedIds.add(r.id));
+  dislikedMedia.forEach((d) => completedIds.add(d.id));
+  matrix.hardFilteredIds.forEach((h) => completedIds.add(h));
+
+  // 2. Fetch candidates from TMDB recommendations
+  const baseCandidates: MediaItem[] = [];
+  try {
+    const tmdbRecs = await fetchRecommendations(targetId, targetType);
+    if (Array.isArray(tmdbRecs)) {
+      baseCandidates.push(...tmdbRecs);
+    }
+  } catch {}
+
+  // 3. Fallback / enrich with discover if pool is thin
+  if (baseCandidates.length < 8) {
+    try {
+      const genreId = targetItem.genre_ids?.[0] || targetItem.genres?.[0]?.id;
+      if (genreId) {
+        const url = `https://api.themoviedb.org/3/discover/${targetType}?with_genres=${genreId}&sort_by=popularity.desc&vote_average.gte=6.5`;
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${TMDB_READ_ACCESS_TOKEN}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.results)) {
+            data.results.forEach((item: any) => {
+              baseCandidates.push({
+                id: item.id,
+                title: item.title || item.name || 'Untitled',
+                overview: item.overview || '',
+                poster_path: item.poster_path || null,
+                backdrop_path: item.backdrop_path || null,
+                release_date: item.release_date || item.first_air_date || '',
+                vote_average: item.vote_average || 7.0,
+                media_type: targetType,
+                genre_ids: item.genre_ids || [],
+              });
+            });
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 4. Enrich & Score candidates using our taste algorithm
+  const targetKnown = await getKnownTitleTags(targetId, targetType);
+  const targetClusters = new Set(targetKnown.clusters);
+  const targetSubgenres = new Set(targetKnown.subgenres);
+
+  const scored: Array<{ item: MediaItem; score: number }> = [];
+  const seenIds = new Set<number>();
+
+  for (const item of baseCandidates) {
+    if (!item || !item.id || completedIds.has(item.id) || seenIds.has(item.id)) continue;
+    seenIds.add(item.id);
+
+    let score = 1.0;
+
+    // Subgenre / Cluster overlap with target
+    const candidateKnown = await getKnownTitleTags(item.id, item.media_type || targetType);
+    let overlapCount = 0;
+    candidateKnown.clusters.forEach((c) => {
+      if (targetClusters.has(c)) overlapCount += 1.5;
+    });
+    candidateKnown.subgenres.forEach((s) => {
+      if (targetSubgenres.has(s)) overlapCount += 1.2;
+    });
+    score += overlapCount * 0.4;
+
+    // User Taste DNA Affinity Boost
+    const genreBoost = (item.genre_ids || []).reduce(
+      (acc, gid) => acc + (matrix.genreWeights[gid] || 0) * 0.25,
+      0
+    );
+    score += genreBoost;
+
+    // Quality factor
+    const ratingBoost = (item.vote_average || 7.0) * 0.1;
+    score += ratingBoost;
+
+    scored.push({ item, score });
+  }
+
+  // Sort descending by score
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored.slice(0, limit).map((s) => s.item);
+}
+

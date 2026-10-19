@@ -30,7 +30,7 @@ export const getAuthToken = (): string | null => {
 let syncTimeout: any = null;
 
 /**
- * Syncs the current watch history and liked titles to the Cloudflare D1 database.
+ * Syncs the current watch history and liked titles to the Cloudflare D1 / dev database.
  * Debounced to prevent excessive network requests.
  */
 export const syncToEdge = (
@@ -46,15 +46,14 @@ export const syncToEdge = (
 
   syncTimeout = setTimeout(async () => {
     try {
-      const token = getAuthToken();
-      // Only sync to database when user is authenticated so guest data does not overwrite user DB
-      if (!token) return;
-
       const userId = getUserId();
+      const token = getAuthToken();
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
       };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
 
       await fetch('/api/user/sync', {
         method: 'POST',
@@ -70,6 +69,91 @@ export const syncToEdge = (
       // Silently ignore if offline
     }
   }, 1000);
+};
+
+/**
+ * Immediate sync without debounce (used when user navigates or completes an action).
+ */
+export const syncToEdgeImmediately = async (
+  watchHistory: WatchHistoryItem[],
+  likedMedia: MediaItem[],
+  userRatings: any[] = []
+): Promise<void> => {
+  if (typeof window === 'undefined') return;
+
+  if (syncTimeout) {
+    clearTimeout(syncTimeout);
+    syncTimeout = null;
+  }
+
+  try {
+    const userId = getUserId();
+    const token = getAuthToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    await fetch('/api/user/sync', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        userId,
+        watchHistory,
+        likedMedia,
+        userRatings,
+      }),
+    });
+  } catch {
+    // Silently ignore if offline
+  }
+};
+
+/**
+ * Reliable exit synchronization using sendBeacon or keepalive fetch.
+ * Runs on window beforeunload, pagehide, or when exiting the player.
+ */
+export const syncOnExit = (
+  watchHistory: WatchHistoryItem[],
+  likedMedia: MediaItem[],
+  userRatings: any[] = []
+): void => {
+  if (typeof window === 'undefined') return;
+
+  if (syncTimeout) {
+    clearTimeout(syncTimeout);
+    syncTimeout = null;
+  }
+
+  try {
+    const userId = getUserId();
+    const token = getAuthToken();
+    const payload = JSON.stringify({
+      userId,
+      watchHistory,
+      likedMedia,
+      userRatings,
+    });
+
+    if (navigator.sendBeacon) {
+      const blob = new Blob([payload], { type: 'application/json' });
+      navigator.sendBeacon('/api/user/sync', blob);
+    } else {
+      fetch('/api/user/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    }
+  } catch {
+    // Silently ignore
+  }
 };
 
 /**
@@ -106,9 +190,6 @@ export const initEdgeSync = () => {
 
   // Subscribe to reactive store changes
   useStreamStore.subscribe((state) => {
-    const token = getAuthToken();
-    if (token) {
-      syncToEdge(state.watchHistory, state.likedMedia, state.userRatings);
-    }
+    syncToEdge(state.watchHistory, state.likedMedia, state.userRatings);
   });
 };

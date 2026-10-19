@@ -1,5 +1,5 @@
 import { TMDB } from 'tmdb-ts';
-import type { MediaItem, Season, Episode, WatchHistoryItem, UserRatingItem } from '../types/movie';
+import type { MediaItem, Season, Episode, WatchHistoryItem, UserRatingItem, PersonItem, MultiSearchResult } from '../types/movie';
 import { computeUnifiedInteractionMatrix } from './interactionMatrix';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
@@ -121,11 +121,60 @@ export const fetchMediaLogo = async (
     console.warn(`Failed to fetch logo for ${type} #${id}`, err);
   }
 
-  logoCache.set(cacheKey, null);
-  return null;
-};
-
-const creditsCache = new Map<string, string[]>();
+    logoCache.set(cacheKey, null);
+    return null;
+  };
+  
+  const quickInfoCache = new Map<string, { runtime?: number; numberOfSeasons?: number; certification?: string; backdrop_path?: string }>();
+  
+  export const fetchMediaQuickInfo = async (
+    id: number,
+    type: 'movie' | 'tv' = 'movie'
+  ): Promise<{ runtime?: number; numberOfSeasons?: number; certification?: string; backdrop_path?: string }> => {
+    const cacheKey = `${type}-${id}`;
+    if (quickInfoCache.has(cacheKey)) {
+      return quickInfoCache.get(cacheKey)!;
+    }
+  
+    try {
+      const url = `https://api.themoviedb.org/3/${type}/${id}?api_key=${TMDB_API_KEY}&append_to_response=release_dates,content_ratings`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        let certification: string | undefined;
+  
+        if (type === 'movie' && data.release_dates?.results) {
+          const us = data.release_dates.results.find((r: any) => r.iso_3166_1 === 'US');
+          const certObj = us?.release_dates?.find((d: any) => d.certification);
+          certification = certObj?.certification;
+        } else if (type === 'tv' && data.content_ratings?.results) {
+          const us = data.content_ratings.results.find((r: any) => r.iso_3166_1 === 'US');
+          certification = us?.rating;
+        }
+  
+        const info = {
+          runtime: data.runtime || (data.episode_run_time && data.episode_run_time[0]) || undefined,
+          numberOfSeasons: data.number_of_seasons || undefined,
+          certification: certification || (type === 'tv' ? 'TV-14' : 'PG-13'),
+          backdrop_path: data.backdrop_path || undefined,
+        };
+        quickInfoCache.set(cacheKey, info);
+        return info;
+      }
+    } catch (err) {
+      console.warn(`Quick info fetch failed for ${type} #${id}`, err);
+    }
+  
+    const fallback = {
+      runtime: type === 'movie' ? 118 : undefined,
+      numberOfSeasons: type === 'tv' ? 1 : undefined,
+      certification: type === 'tv' ? 'TV-14' : 'PG-13',
+    };
+    quickInfoCache.set(cacheKey, fallback);
+    return fallback;
+  };
+  
+  const creditsCache = new Map<string, string[]>();
 
 export const fetchCredits = async (
   id: number,
@@ -497,6 +546,8 @@ export const CURATED_MOVIES: MediaItem[] = [
     vote_average: 7.2,
     vote_count: 340,
     media_type: 'movie',
+    runtime: 136,
+    certification: 'TV-MA',
     tagline: 'See Naples and then live.',
     genres: [{ id: 18, name: 'Drama' }, { id: 14, name: 'Fantasy' }],
   },
@@ -510,6 +561,8 @@ export const CURATED_MOVIES: MediaItem[] = [
     vote_average: 8.2,
     vote_count: 5420,
     media_type: 'movie',
+    runtime: 166,
+    certification: 'PG-13',
     tagline: 'Long live the fighters.',
     genres: [{ id: 878, name: 'Sci-Fi' }, { id: 12, name: 'Adventure' }],
   },
@@ -523,6 +576,8 @@ export const CURATED_MOVIES: MediaItem[] = [
     vote_average: 7.7,
     vote_count: 6100,
     media_type: 'movie',
+    runtime: 128,
+    certification: 'R',
     tagline: 'Come together.',
     genres: [{ id: 28, name: 'Action' }, { id: 35, name: 'Comedy' }],
   },
@@ -536,6 +591,8 @@ export const CURATED_MOVIES: MediaItem[] = [
     vote_average: 8.1,
     vote_count: 9200,
     media_type: 'movie',
+    runtime: 180,
+    certification: 'R',
     tagline: 'The world forever changes.',
     genres: [{ id: 18, name: 'Drama' }, { id: 36, name: 'History' }],
   },
@@ -549,6 +606,8 @@ export const CURATED_MOVIES: MediaItem[] = [
     vote_average: 8.4,
     vote_count: 35400,
     media_type: 'movie',
+    runtime: 169,
+    certification: 'PG-13',
     tagline: 'Mankind was born on Earth. It was never meant to die here.',
     genres: [{ id: 12, name: 'Adventure' }, { id: 878, name: 'Sci-Fi' }],
   },
@@ -562,6 +621,8 @@ export const CURATED_MOVIES: MediaItem[] = [
     vote_average: 8.4,
     vote_count: 36700,
     media_type: 'movie',
+    runtime: 148,
+    certification: 'PG-13',
     tagline: 'Your mind is the scene of the crime.',
     genres: [{ id: 28, name: 'Action' }, { id: 878, name: 'Sci-Fi' }],
   },
@@ -575,6 +636,8 @@ export const CURATED_MOVIES: MediaItem[] = [
     vote_average: 8.5,
     vote_count: 33100,
     media_type: 'movie',
+    runtime: 152,
+    certification: 'PG-13',
     tagline: 'Welcome to a world without rules.',
     genres: [{ id: 18, name: 'Drama' }, { id: 28, name: 'Action' }],
   },
@@ -588,6 +651,8 @@ export const CURATED_MOVIES: MediaItem[] = [
     vote_average: 8.4,
     vote_count: 7100,
     media_type: 'movie',
+    runtime: 140,
+    certification: 'PG',
     tagline: 'It\'s how you wear the mask that matters.',
     genres: [{ id: 16, name: 'Animation' }, { id: 28, name: 'Action' }],
   },
@@ -601,6 +666,8 @@ export const CURATED_MOVIES: MediaItem[] = [
     vote_average: 7.6,
     vote_count: 11400,
     media_type: 'movie',
+    runtime: 192,
+    certification: 'PG-13',
     tagline: 'Return to Pandora.',
     genres: [{ id: 878, name: 'Sci-Fi' }, { id: 12, name: 'Adventure' }],
   },
@@ -614,6 +681,8 @@ export const CURATED_MOVIES: MediaItem[] = [
     vote_average: 8.2,
     vote_count: 25600,
     media_type: 'movie',
+    runtime: 136,
+    certification: 'R',
     tagline: 'Welcome to the Real World.',
     genres: [{ id: 28, name: 'Action' }, { id: 878, name: 'Sci-Fi' }],
   }
@@ -631,8 +700,9 @@ export const CURATED_SERIES: MediaItem[] = [
     vote_average: 8.7,
     vote_count: 9800,
     media_type: 'tv',
-    number_of_seasons: 10,
-    number_of_episodes: 91,
+    number_of_seasons: 7,
+    number_of_episodes: 71,
+    certification: 'TV-MA',
     tagline: 'Science makes sense, family doesn\'t.',
     genres: [{ id: 16, name: 'Animation' }, { id: 35, name: 'Comedy' }, { id: 10765, name: 'Sci-Fi & Fantasy' }],
   },
@@ -648,6 +718,7 @@ export const CURATED_SERIES: MediaItem[] = [
     media_type: 'tv',
     number_of_seasons: 4,
     number_of_episodes: 34,
+    certification: 'TV-14',
     tagline: 'Every ending has a beginning.',
     genres: [{ id: 18, name: 'Drama' }, { id: 9648, name: 'Mystery' }, { id: 10765, name: 'Sci-Fi & Fantasy' }],
   },
@@ -663,6 +734,7 @@ export const CURATED_SERIES: MediaItem[] = [
     media_type: 'tv',
     number_of_seasons: 5,
     number_of_episodes: 62,
+    certification: 'TV-MA',
     tagline: 'Remember my name.',
     genres: [{ id: 18, name: 'Drama' }, { id: 80, name: 'Crime' }],
   },
@@ -676,8 +748,9 @@ export const CURATED_SERIES: MediaItem[] = [
     vote_average: 8.6,
     vote_count: 5300,
     media_type: 'tv',
-    number_of_seasons: 2,
+    number_of_seasons: 1,
     number_of_episodes: 9,
+    certification: 'TV-MA',
     tagline: 'When you\'re lost in the darkness, look for the light.',
     genres: [{ id: 18, name: 'Drama' }, { id: 10759, name: 'Action & Adventure' }],
   },
@@ -691,8 +764,9 @@ export const CURATED_SERIES: MediaItem[] = [
     vote_average: 8.4,
     vote_count: 8400,
     media_type: 'tv',
-    number_of_seasons: 2,
+    number_of_seasons: 1,
     number_of_episodes: 8,
+    certification: 'TV-14',
     tagline: 'Smart, sarcastic and a little dead inside.',
     genres: [{ id: 35, name: 'Comedy' }, { id: 9648, name: 'Mystery' }],
   },
@@ -708,6 +782,7 @@ export const CURATED_SERIES: MediaItem[] = [
     media_type: 'tv',
     number_of_seasons: 2,
     number_of_episodes: 9,
+    certification: 'TV-MA',
     tagline: '45.6 Billion Won is Child\'s Play.',
     genres: [{ id: 18, name: 'Drama' }, { id: 9648, name: 'Mystery' }],
   },
@@ -723,6 +798,7 @@ export const CURATED_SERIES: MediaItem[] = [
     media_type: 'tv',
     number_of_seasons: 1,
     number_of_episodes: 10,
+    certification: 'TV-MA',
     tagline: 'Duty. Honor. Destiny.',
     genres: [{ id: 18, name: 'Drama' }, { id: 10768, name: 'War & Politics' }],
   }
@@ -730,32 +806,50 @@ export const CURATED_SERIES: MediaItem[] = [
 
 export const ALL_CURATED_MEDIA = [...CURATED_MOVIES, ...CURATED_SERIES];
 
-// Global Search using tmdb-ts client with direct API fallback
-export const searchWithTMDB = async (query: string): Promise<MediaItem[]> => {
+// Global Multi-Entity Search (Movies, TV Shows & People / Cast / Directors)
+export const multiSearchWithTMDB = async (query: string): Promise<MultiSearchResult> => {
   const clean = query.trim();
-  if (!clean) return [];
+  if (!clean) return { media: [], people: [] };
+
+  const parseMediaItem = (item: any): MediaItem => ({
+    id: item.id,
+    title: item.title || item.name || 'Untitled',
+    original_title: item.original_title || item.original_name,
+    overview: item.overview || '',
+    poster_path: item.poster_path ?? null,
+    backdrop_path: item.backdrop_path ?? null,
+    release_date: item.release_date || item.first_air_date || '',
+    vote_average: item.vote_average || 0,
+    vote_count: item.vote_count || 0,
+    media_type: (item.media_type as 'movie' | 'tv') || 'movie',
+    genre_ids: item.genre_ids || [],
+  });
+
+  const parsePersonItem = (item: any): PersonItem => ({
+    id: item.id,
+    name: item.name || 'Unknown',
+    profile_path: item.profile_path ?? null,
+    known_for_department: item.known_for_department || 'Acting',
+    known_for: (item.known_for || [])
+      .filter((k: any) => k.media_type === 'movie' || k.media_type === 'tv')
+      .map(parseMediaItem),
+  });
 
   // Method 1: Use tmdb-ts client with the Read Access Token
   try {
     const client = getTmdbClient();
     const res = await client.search.multi({ query: clean });
     if (res && res.results && res.results.length > 0) {
-      const parsed = res.results
+      const media = res.results
         .filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv')
-        .map((item: any) => ({
-          id: item.id,
-          title: item.title || item.name || 'Untitled',
-          original_title: item.original_title || item.original_name,
-          overview: item.overview || '',
-          poster_path: item.poster_path ?? null,
-          backdrop_path: item.backdrop_path ?? null,
-          release_date: item.release_date || item.first_air_date || '',
-          vote_average: item.vote_average || 0,
-          vote_count: item.vote_count || 0,
-          media_type: (item.media_type as 'movie' | 'tv') || 'movie',
-          genre_ids: item.genre_ids || [],
-        }));
-      if (parsed.length > 0) return parsed;
+        .map(parseMediaItem);
+      const people = res.results
+        .filter((item: any) => item.media_type === 'person')
+        .map(parsePersonItem);
+
+      if (media.length > 0 || people.length > 0) {
+        return { media, people };
+      }
     }
   } catch (err) {
     console.warn('tmdb-ts multi search encountered an issue, attempting direct fetch:', err);
@@ -768,34 +862,69 @@ export const searchWithTMDB = async (query: string): Promise<MediaItem[]> => {
     if (res.ok) {
       const data = await res.json();
       if (data && data.results && data.results.length > 0) {
-        return data.results
+        const media = data.results
           .filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv')
-          .map((item: any) => ({
-            id: item.id,
-            title: item.title || item.name || 'Untitled',
-            original_title: item.original_title || item.original_name,
-            overview: item.overview || '',
-            poster_path: item.poster_path ?? null,
-            backdrop_path: item.backdrop_path ?? null,
-            release_date: item.release_date || item.first_air_date || '',
-            vote_average: item.vote_average || 0,
-            vote_count: item.vote_count || 0,
-            media_type: (item.media_type as 'movie' | 'tv') || 'movie',
-            genre_ids: item.genre_ids || [],
-          }));
+          .map(parseMediaItem);
+        const people = data.results
+          .filter((item: any) => item.media_type === 'person')
+          .map(parsePersonItem);
+        return { media, people };
       }
     }
   } catch (err) {
     console.error('Direct TMDB API search failed:', err);
   }
 
-  // Method 3: Search within local catalog
+  // Method 3: Search within local catalog fallback
   const q = clean.toLowerCase();
-  return ALL_CURATED_MEDIA.filter(
+  const localMedia = ALL_CURATED_MEDIA.filter(
     (m) =>
       m.title.toLowerCase().includes(q) ||
       (m.overview && m.overview.toLowerCase().includes(q))
   );
+  return { media: localMedia, people: [] };
+};
+
+// Legacy single-array wrapper for backward compatibility
+export const searchWithTMDB = async (query: string): Promise<MediaItem[]> => {
+  const result = await multiSearchWithTMDB(query);
+  return result.media;
+};
+
+// Fetch person combined credits (filmography for actors & directors)
+export const fetchPersonCombinedCredits = async (personId: number): Promise<MediaItem[]> => {
+  try {
+    const url = `https://api.themoviedb.org/3/person/${personId}/combined_credits?api_key=${TMDB_API_KEY}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      const combined = [...(data.cast || []), ...(data.crew || [])];
+      const seen = new Set<number>();
+      return combined
+        .filter((item: any) => {
+          if (!item.id || seen.has(item.id)) return false;
+          seen.add(item.id);
+          return (item.media_type === 'movie' || item.media_type === 'tv') && (item.poster_path || item.backdrop_path);
+        })
+        .map((item: any) => ({
+          id: item.id,
+          title: item.title || item.name || 'Untitled',
+          original_title: item.original_title || item.original_name,
+          overview: item.overview || '',
+          poster_path: item.poster_path ?? null,
+          backdrop_path: item.backdrop_path ?? null,
+          release_date: item.release_date || item.first_air_date || '',
+          vote_average: item.vote_average || 0,
+          vote_count: item.vote_count || 0,
+          media_type: (item.media_type as 'movie' | 'tv') || 'movie',
+          genre_ids: item.genre_ids || [],
+        }))
+        .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch credits for person #${personId}`, err);
+  }
+  return [];
 };
 
 // Fetch TV Season details & episodes using tmdb-ts with fallback
@@ -989,6 +1118,34 @@ export const fetchPopularSeries = async (): Promise<MediaItem[]> => {
   }
 
   return CURATED_SERIES;
+};
+
+// Fetch media tags / keywords (for Netflix "This show/movie is: ..." tags)
+export const fetchMediaKeywords = async (
+  id: number,
+  type: 'movie' | 'tv' = 'movie'
+): Promise<string[]> => {
+  try {
+    const url = `https://api.themoviedb.org/3/${type}/${id}/keywords?api_key=${TMDB_API_KEY}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      const list = type === 'tv' ? data.results : data.keywords;
+      if (Array.isArray(list) && list.length > 0) {
+        return list
+          .slice(0, 5)
+          .map((k: { name: string }) =>
+            k.name
+              .split(' ')
+              .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+              .join(' ')
+          );
+      }
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch keywords for ${type} #${id}`, err);
+  }
+  return [];
 };
 
 // Fetch full details of an item (movie or TV) for the Inner Page

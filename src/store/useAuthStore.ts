@@ -216,12 +216,30 @@ export const useAuthStore = create<AuthState>()(
             set({ user: data.user, token });
             localStorage.setItem('moviewatcher_user_id', data.user.id);
 
-            // Load this authenticated user's records from DB into client state
+            // Filter out any records that were explicitly deleted from watched
+            const deletedSet = new Set((useStreamStore.getState().deletedWatchedIds || []).map(Number));
+            const filterOutDeleted = (list: any[]) =>
+              (list || []).filter((item: any) => !deletedSet.has(Number(item.id || item.media_id || item.mediaId)));
+
+            const filteredHistory = filterOutDeleted(data.watchHistory);
+            const filteredLikes = filterOutDeleted(data.likedMedia);
+            const filteredRatings = filterOutDeleted(data.ratings);
+
+            // Load authenticated user's records from DB into client state
             useStreamStore.setState({
-              watchHistory: data.watchHistory || [],
-              likedMedia: data.likedMedia || [],
-              userRatings: data.ratings || [],
+              watchHistory: filteredHistory,
+              likedMedia: filteredLikes,
+              userRatings: filteredRatings,
             });
+
+            // If remote DB had items that were locally deleted, push sanitized state back immediately
+            if (deletedSet.size > 0) {
+              import('../services/edgeSync')
+                .then((m) => {
+                  m.syncToEdgeImmediately(filteredHistory, filteredLikes, filteredRatings);
+                })
+                .catch(() => {});
+            }
           }
         } catch {
           // Keep offline state

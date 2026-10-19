@@ -10,6 +10,7 @@ import type {
 } from '../types/movie';
 import { computeUnifiedInteractionMatrix } from '../services/interactionMatrix';
 import { calculateConfidenceWeight } from '../services/letterboxd';
+import { CURATED_SERIES } from '../services/tmdb';
 
 interface StreamState {
   // Map of seriesId -> last streamed season & episode info
@@ -27,8 +28,17 @@ interface StreamState {
   // List of liked/favorited media items for taste personalization
   likedMedia: MediaItem[];
 
+  // List of disliked media items for negative taste learning and hard-filtering
+  dislikedMedia: MediaItem[];
+
   // Explicit & imported Letterboxd ratings with confidence weights
   userRatings: UserRatingItem[];
+
+  // IDs explicitly removed from Continue Watching by the user
+  dismissedHistoryIds: number[];
+
+  // IDs explicitly deleted from Watched library by the user (persisted to prevent rehydration)
+  deletedWatchedIds: number[];
 
   // Actions
   saveSeriesEpisode: (
@@ -65,9 +75,15 @@ interface StreamState {
 
   isLiked: (id: number) => boolean;
 
+  toggleDislike: (item: MediaItem) => void;
+
+  isDisliked: (id: number) => boolean;
+
   markAsWatched: (item: MediaItem) => void;
 
   toggleWatched: (item: MediaItem) => void;
+
+  removeFromWatched: (id: number) => void;
 
   isWatched: (id: number) => boolean;
 
@@ -123,11 +139,25 @@ export const useStreamStore = create<StreamState>()(
       watchedList: [],
       watchlist: [],
       likedMedia: [],
+      dislikedMedia: [],
       userRatings: [],
+      dismissedHistoryIds: [],
+      deletedWatchedIds: [],
 
       saveSeriesEpisode: (seriesId, season, episode, meta = {}) => {
         const now = Date.now();
-        const title = meta.title || `Series #${seriesId}`;
+        const curated = CURATED_SERIES.find((c) => c.id === seriesId);
+        const title = meta.title || curated?.title || `Series #${seriesId}`;
+        const posterPath = meta.poster_path ?? curated?.poster_path ?? null;
+        const backdropPath = meta.backdrop_path ?? curated?.backdrop_path ?? null;
+        const overview = meta.overview || curated?.overview || '';
+        const releaseDate = meta.release_date || curated?.release_date;
+        const seasons = meta.seasons || curated?.seasons;
+        const numberOfSeasons = meta.number_of_seasons || curated?.number_of_seasons;
+        const episodeRunTime = meta.episode_run_time || curated?.episode_run_time;
+        const dur = meta.durationSeconds ?? (episodeRunTime && episodeRunTime.length > 0 ? episodeRunTime[0] * 60 : 45 * 60);
+        const sec = meta.progressSeconds ?? 0;
+        const progressPercent = dur > 0 && sec > 5 ? Math.min(95, Math.max(5, Math.round((sec / dur) * 100))) : 0;
 
         set((state) => {
           const updatedSeries = {
@@ -137,13 +167,15 @@ export const useStreamStore = create<StreamState>()(
               season,
               episode,
               title,
-              overview: meta.overview,
-              poster_path: meta.poster_path ?? null,
-              backdrop_path: meta.backdrop_path ?? null,
-              release_date: meta.release_date,
+              overview,
+              poster_path: posterPath,
+              backdrop_path: backdropPath,
+              release_date: releaseDate,
               genre_ids: meta.genre_ids,
-              episode_run_time: meta.episode_run_time,
-              seasons: meta.seasons,
+              episode_run_time: episodeRunTime,
+              seasons,
+              progressSeconds: sec,
+              durationSeconds: dur,
               updatedAt: now,
             },
           };
@@ -156,23 +188,26 @@ export const useStreamStore = create<StreamState>()(
             id: seriesId,
             type: 'tv',
             title,
-            overview: meta.overview,
-            poster_path: meta.poster_path ?? null,
-            backdrop_path: meta.backdrop_path ?? null,
-            release_date: meta.release_date,
-            episode_run_time: meta.episode_run_time,
-            vote_average: meta.vote_average,
-            number_of_seasons: meta.number_of_seasons,
-            seasons: meta.seasons,
+            overview,
+            poster_path: posterPath,
+            backdrop_path: backdropPath,
+            release_date: releaseDate,
+            episode_run_time: episodeRunTime,
+            vote_average: meta.vote_average || curated?.vote_average,
+            number_of_seasons: numberOfSeasons,
+            seasons,
             season,
             episode,
+            progressSeconds: sec,
+            durationSeconds: dur,
+            progress: progressPercent,
             updatedAt: now,
           };
 
           return {
             seriesProgress: updatedSeries,
             watchHistory: [newHistoryItem, ...filteredHistory].slice(0, 30),
-            watchlist: state.watchlist.filter((m) => m.id !== seriesId),
+            dismissedHistoryIds: (state.dismissedHistoryIds || []).filter((dId) => dId !== seriesId),
           };
         });
       },
@@ -205,44 +240,143 @@ export const useStreamStore = create<StreamState>()(
 
           return {
             watchHistory: [newItem, ...filtered].slice(0, 30),
-            watchlist: state.watchlist.filter((m) => m.id !== movie.id),
+            dismissedHistoryIds: (state.dismissedHistoryIds || []).filter((dId) => dId !== movie.id),
           };
         });
       },
 
       removeFromHistory: (id) => {
-        set((state) => ({
-          watchHistory: state.watchHistory.filter((item) => item.id !== id),
-        }));
+        // Clean localStorage keys
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.removeItem(`moviewatcher_playback_movie_${id}`);
+            localStorage.removeItem(`moviewatcher_playback_tv_${id}`);
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+              const key = localStorage.key(i);
+              if (
+                key &&
+                (key.startsWith(`moviewatcher_playback_tv_${id}_`) ||
+                  key === `moviewatcher_playback_tv_${id}` ||
+                  key === `moviewatcher_playback_movie_${id}`)
+              ) {
+                localStorage.removeItem(key);
+              }
+            }
+          }
+        } catch {}
+
+        set((state) => {
+          const updatedSeries = { ...state.seriesProgress };
+          delete updatedSeries[id];
+          const updatedDismissed = Array.from(new Set([...(state.dismissedHistoryIds || []), id]));
+          const updatedHistory = (state.watchHistory || []).filter((item) => item.id !== id);
+
+          return {
+            watchHistory: updatedHistory,
+            seriesProgress: updatedSeries,
+            dismissedHistoryIds: updatedDismissed,
+          };
+        });
       },
 
       clearHistory: () => {
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+              const key = localStorage.key(i);
+              if (key && key.startsWith('moviewatcher_playback_')) {
+                localStorage.removeItem(key);
+              }
+            }
+          }
+        } catch {}
+
         set({
           seriesProgress: {},
           watchHistory: [],
           watchedList: [],
           watchlist: [],
           likedMedia: [],
+          dislikedMedia: [],
           userRatings: [],
+          dismissedHistoryIds: [],
+          deletedWatchedIds: [],
         });
       },
 
       toggleLike: (item) => {
         set((state) => {
-          const exists = state.likedMedia.some((m) => m.id === item.id);
+          const exists = state.likedMedia.some((m) => Number(m.id) === Number(item.id));
           if (exists) {
             return {
-              likedMedia: state.likedMedia.filter((m) => m.id !== item.id),
+              likedMedia: state.likedMedia.filter((m) => Number(m.id) !== Number(item.id)),
             };
           }
           return {
-            likedMedia: [item, ...state.likedMedia].slice(0, 50),
+            likedMedia: [item, ...state.likedMedia.filter((m) => Number(m.id) !== Number(item.id))].slice(0, 50),
+            // Mutually exclusive: un-dislike if previously disliked
+            dislikedMedia: (state.dislikedMedia || []).filter((m) => Number(m.id) !== Number(item.id)),
           };
         });
       },
 
       isLiked: (id) => {
-        return get().likedMedia.some((m) => m.id === id);
+        return get().likedMedia.some((m) => Number(m.id) === Number(id));
+      },
+
+      toggleDislike: (item) => {
+        set((state) => {
+          const numId = Number(item.id);
+          const isCurrentlyDisliked = (state.dislikedMedia || []).some((m) => Number(m.id) === numId);
+          if (isCurrentlyDisliked) {
+            return {
+              dislikedMedia: (state.dislikedMedia || []).filter((m) => Number(m.id) !== numId),
+              userRatings: state.userRatings.filter(
+                (r) => Number(r.id) !== numId || r.source !== 'in_app' || (r.rating !== undefined && r.rating > 1.5)
+              ),
+            };
+          }
+
+          // Add to dislikedMedia
+          const updatedDisliked = [item, ...(state.dislikedMedia || []).filter((m) => Number(m.id) !== numId)].slice(0, 100);
+          // Mutually exclusive: remove from likedMedia
+          const updatedLiked = state.likedMedia.filter((m) => Number(m.id) !== numId);
+          // Remove from watchlist if present
+          const updatedWatchlist = state.watchlist.filter((m) => Number(m.id) !== numId);
+
+          // Add explicit negative rating signal into userRatings for recommendation matrix
+          const negativeRating: UserRatingItem = {
+            id: numId,
+            type: item.media_type || 'movie',
+            title: item.title,
+            rating: 1.0,
+            confidenceWeight: 1.0,
+            source: 'in_app',
+            poster_path: item.poster_path,
+            backdrop_path: item.backdrop_path,
+            release_date: item.release_date,
+            vote_average: item.vote_average,
+            genre_ids: item.genre_ids || (item.genres ? item.genres.map((g) => g.id) : []),
+            ratedAt: Date.now(),
+          };
+
+          const updatedRatings = [
+            negativeRating,
+            ...state.userRatings.filter((r) => Number(r.id) !== numId),
+          ];
+
+          return {
+            dislikedMedia: updatedDisliked,
+            likedMedia: updatedLiked,
+            watchlist: updatedWatchlist,
+            userRatings: updatedRatings,
+          };
+        });
+      },
+
+      isDisliked: (id) => {
+        const numId = Number(id);
+        return Boolean(get().dislikedMedia && get().dislikedMedia.some((m) => Number(m.id) === numId));
       },
 
       markAsWatched: (item) => {
@@ -277,15 +411,23 @@ export const useStreamStore = create<StreamState>()(
           ratedAt: now,
         };
 
-        set((state) => ({
-          watchedList: [newWatchedItem, ...(state.watchedList || []).filter((w) => w.id !== id)],
-          userRatings: state.userRatings.some((r) => r.id === id)
-            ? state.userRatings
-            : [newRatingItem, ...state.userRatings],
-          // Remove from Continue Watching (watchHistory) so it NEVER floods continue watching!
-          watchHistory: state.watchHistory.filter((w) => w.id !== id),
-          watchlist: state.watchlist.filter((w) => w.id !== id),
-        }));
+        set((state) => {
+          const updatedSeries = { ...state.seriesProgress };
+          delete updatedSeries[id];
+          return {
+            watchedList: [newWatchedItem, ...(state.watchedList || []).filter((w) => w.id !== id)],
+            userRatings: state.userRatings.some((r) => r.id === id)
+              ? state.userRatings
+              : [newRatingItem, ...state.userRatings],
+            // Remove marked item from Continue Watching (both movies & series)
+            watchHistory: (state.watchHistory || []).filter((w) => Number(w.id) !== Number(id)),
+            // Remove from Watchlist since it is now watched
+            watchlist: (state.watchlist || []).filter((w) => Number(w.id) !== Number(id)),
+            // If it was previously in deletedWatchedIds, un-delete it
+            deletedWatchedIds: (state.deletedWatchedIds || []).filter((d) => Number(d) !== Number(id)),
+            seriesProgress: updatedSeries,
+          };
+        });
       },
 
       toggleWatched: (item) => {
@@ -293,43 +435,98 @@ export const useStreamStore = create<StreamState>()(
         const currentIsWatched = get().isWatched(id);
 
         if (currentIsWatched) {
-          // Remove from watchedList and userRatings
-          set((state) => ({
-            watchedList: (state.watchedList || []).filter((w) => w.id !== id),
-            userRatings: state.userRatings.filter((r) => r.id !== id),
-          }));
+          get().removeFromWatched(id);
         } else {
           get().markAsWatched(item);
         }
       },
 
+      removeFromWatched: (id) => {
+        const numId = Number(id);
+        let nextHistory: any[] = [];
+        let nextLikes: any[] = [];
+        let nextRatings: any[] = [];
+
+        set((state) => {
+          const updatedDeleted = Array.from(new Set([...(state.deletedWatchedIds || []), numId]));
+          const updatedSeries = { ...(state.seriesProgress || {}) };
+          delete updatedSeries[numId];
+
+          try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+              for (let i = localStorage.length - 1; i >= 0; i--) {
+                const key = localStorage.key(i);
+                if (key && (key.includes(`_${numId}_`) || key.endsWith(`_${numId}`))) {
+                  localStorage.removeItem(key);
+                }
+              }
+            }
+          } catch {}
+
+          const nextWatched = (state.watchedList || []).filter((w) => Number(w.id) !== numId);
+          nextRatings = (state.userRatings || []).filter((r) => Number(r.id) !== numId);
+          nextHistory = (state.watchHistory || []).filter((h) => Number(h.id) !== numId);
+          nextLikes = (state.likedMedia || []).filter((l) => Number(l.id) !== numId);
+          const nextDislikes = (state.dislikedMedia || []).filter((d) => Number(d.id) !== numId);
+
+          return {
+            deletedWatchedIds: updatedDeleted,
+            watchedList: nextWatched,
+            userRatings: nextRatings,
+            watchHistory: nextHistory,
+            likedMedia: nextLikes,
+            dislikedMedia: nextDislikes,
+            seriesProgress: updatedSeries,
+          };
+        });
+
+        // Immediately sync removal to edge and dev server
+        try {
+          import('../services/edgeSync')
+            .then((m) => {
+              m.syncToEdgeImmediately(nextHistory, nextLikes, nextRatings);
+            })
+            .catch(() => {});
+        } catch {}
+      },
+
       isWatched: (id) => {
         const state = get();
-        return Boolean(state.watchedList && state.watchedList.some((w) => w.id === id));
+        const numId = Number(id);
+        if ((state.deletedWatchedIds || []).some((d) => Number(d) === numId)) return false;
+        const inWatchlist = (state.watchlist || []).some((w) => Number(w.id) === numId);
+        if (inWatchlist) return false;
+        return Boolean(
+          (state.watchedList && state.watchedList.some((w) => Number(w.id) === numId)) ||
+          (state.userRatings && state.userRatings.some((r) => Number(r.id) === numId)) ||
+          (state.likedMedia && state.likedMedia.some((l) => Number(l.id) === numId)) ||
+          (state.dislikedMedia && state.dislikedMedia.some((d) => Number(d.id) === numId)) ||
+          (state.watchHistory && state.watchHistory.some((h) => Number(h.id) === numId))
+        );
       },
 
       // Watchlist Implementation
       toggleWatchlist: (item) => {
         set((state) => {
-          const exists = state.watchlist.some((m) => m.id === item.id);
+          const exists = state.watchlist.some((m) => Number(m.id) === Number(item.id));
           if (exists) {
             return {
-              watchlist: state.watchlist.filter((m) => m.id !== item.id),
+              watchlist: state.watchlist.filter((m) => Number(m.id) !== Number(item.id)),
             };
           }
           return {
-            watchlist: [item, ...state.watchlist.filter((m) => m.id !== item.id)],
+            watchlist: [item, ...state.watchlist.filter((m) => Number(m.id) !== Number(item.id))],
           };
         });
       },
 
       isInWatchlist: (id) => {
-        return get().watchlist.some((m) => m.id === id);
+        return get().watchlist.some((m) => Number(m.id) === Number(id));
       },
 
       removeFromWatchlist: (id) => {
         set((state) => ({
-          watchlist: state.watchlist.filter((m) => m.id !== id),
+          watchlist: state.watchlist.filter((m) => Number(m.id) !== Number(id)),
         }));
       },
 
@@ -422,6 +619,9 @@ export const useStreamStore = create<StreamState>()(
 
       bulkAddRatings: (newRatings, syncToHistoryAndLikes = true) => {
         set((state) => {
+          const newIds = new Set(newRatings.map((r) => Number(r.id)));
+          const updatedDeleted = (state.deletedWatchedIds || []).filter((d) => !newIds.has(Number(d)));
+
           // Merge userRatings
           const ratingMap = new Map();
           for (const r of state.userRatings) {
@@ -432,10 +632,10 @@ export const useStreamStore = create<StreamState>()(
           }
           const updatedRatings = Array.from(ratingMap.values());
 
-          // Populate watchedList with rated items (ratings imply watched for movies only)
+          // Populate watchedList with all rated items (ratings imply watched for both movies & series)
           const watchedMap = new Map((state.watchedList || []).map((w) => [w.id, w]));
           for (const r of newRatings) {
-            if (r.type === 'movie' && !watchedMap.has(r.id)) {
+            if (!watchedMap.has(r.id)) {
               watchedMap.set(r.id, {
                 id: r.id,
                 title: r.title,
@@ -444,7 +644,7 @@ export const useStreamStore = create<StreamState>()(
                 backdrop_path: r.backdrop_path ?? null,
                 release_date: r.release_date || '',
                 vote_average: r.vote_average || 8.0,
-                media_type: r.type,
+                media_type: r.type || 'movie',
                 genre_ids: r.genre_ids || [],
               });
             }
@@ -460,31 +660,57 @@ export const useStreamStore = create<StreamState>()(
             return true;
           });
 
-          let updatedLikes = state.likedMedia;
+          let updatedLikes = state.likedMedia || [];
+          let updatedDislikes = state.dislikedMedia || [];
 
           if (syncToHistoryAndLikes) {
-            // Merge 4+ stars into likedMedia
-            const likesMap = new Map();
-            for (const l of state.likedMedia) {
-              likesMap.set(l.id, l);
-            }
+            const likesMap = new Map((state.likedMedia || []).map((l) => [l.id, l]));
+            const dislikesMap = new Map((state.dislikedMedia || []).map((d) => [d.id, d]));
+
             for (const r of newRatings) {
-              const isHighRating = (r.rating !== undefined && r.rating >= 4.0) || r.confidenceWeight >= 4.0;
-              if (isHighRating && !likesMap.has(r.id)) {
-                likesMap.set(r.id, {
-                  id: r.id,
-                  title: r.title,
-                  poster_path: r.poster_path,
-                  backdrop_path: r.backdrop_path,
-                  release_date: r.release_date || '',
-                  vote_average: r.vote_average || 0,
-                  media_type: r.type,
-                  genre_ids: r.genre_ids || [],
-                  overview: '',
-                });
+              const ratingVal = r.rating;
+              if (ratingVal !== undefined && ratingVal !== null && !isNaN(ratingVal)) {
+                if (ratingVal >= 4.0) {
+                  // 4 star and above: automatically converted to Liked
+                  dislikesMap.delete(r.id);
+                  if (!likesMap.has(r.id)) {
+                    likesMap.set(r.id, {
+                      id: r.id,
+                      title: r.title,
+                      poster_path: r.poster_path ?? null,
+                      backdrop_path: r.backdrop_path ?? null,
+                      release_date: r.release_date || '',
+                      vote_average: r.vote_average || 0,
+                      media_type: r.type,
+                      genre_ids: r.genre_ids || [],
+                      overview: '',
+                    });
+                  }
+                } else if (ratingVal < 3.0) {
+                  // below 3 stars: automatically converted to Disliked
+                  likesMap.delete(r.id);
+                  if (!dislikesMap.has(r.id)) {
+                    dislikesMap.set(r.id, {
+                      id: r.id,
+                      title: r.title,
+                      poster_path: r.poster_path ?? null,
+                      backdrop_path: r.backdrop_path ?? null,
+                      release_date: r.release_date || '',
+                      vote_average: r.vote_average || 0,
+                      media_type: r.type,
+                      genre_ids: r.genre_ids || [],
+                      overview: '',
+                    });
+                  }
+                } else {
+                  // 3 star to 4 star (3.0 <= rating < 4.0): unrated / neutral
+                  likesMap.delete(r.id);
+                  dislikesMap.delete(r.id);
+                }
               }
             }
             updatedLikes = Array.from(likesMap.values());
+            updatedDislikes = Array.from(dislikesMap.values());
           }
 
           return {
@@ -492,6 +718,8 @@ export const useStreamStore = create<StreamState>()(
             watchedList: updatedWatchedList,
             watchHistory: updatedHistory,
             likedMedia: updatedLikes,
+            dislikedMedia: updatedDislikes,
+            deletedWatchedIds: updatedDeleted,
           };
         });
 
@@ -529,52 +757,129 @@ export const useStreamStore = create<StreamState>()(
         return computeUnifiedInteractionMatrix(
           state.watchHistory,
           state.likedMedia,
-          state.userRatings
+          state.userRatings,
+          state.dislikedMedia
         );
       },
 
       updatePlaybackProgress: (id, type, seconds, duration, season, episode) => {
         const now = Date.now();
         set((state) => {
+          // If this item was explicitly dismissed/removed by the user, ignore background ticker updates
+          if (state.dismissedHistoryIds && state.dismissedHistoryIds.includes(id)) {
+            return {};
+          }
+
+          let itemFound = false;
           const updatedHistory = state.watchHistory.map((item) => {
             if (item.id === id && item.type === type) {
-              if (type === 'tv' && season && episode && (item.season !== season || item.episode !== episode)) {
-                return item;
+              itemFound = true;
+              const dur = duration ? Math.floor(duration) : item.durationSeconds || (type === 'tv' ? 45 * 60 : 110 * 60);
+              const percent = dur && dur > 0 ? Math.min(100, Math.max(1, Math.round((seconds / dur) * 100))) : item.progress;
+
+              // If it's a TV show and season/episode was provided, update it to the active episode
+              if (type === 'tv' && season && episode) {
+                return {
+                  ...item,
+                  season,
+                  episode,
+                  progressSeconds: Math.floor(seconds),
+                  durationSeconds: dur,
+                  progress: percent,
+                  updatedAt: now,
+                };
               }
+
               return {
                 ...item,
                 progressSeconds: Math.floor(seconds),
-                durationSeconds: duration ? Math.floor(duration) : item.durationSeconds,
+                durationSeconds: dur,
+                progress: percent,
                 updatedAt: now,
               };
             }
             return item;
           });
 
-          const updatedSeries = { ...state.seriesProgress };
-          if (type === 'tv' && updatedSeries[id]) {
-            updatedSeries[id] = {
-              ...updatedSeries[id],
+          // If item wasn't in history yet, add a minimal record so progress is immediately saved
+          let finalHistory = updatedHistory;
+          if (!itemFound) {
+            const curated = type === 'tv' ? CURATED_SERIES.find((c) => c.id === id) : undefined;
+            const dur = duration ? Math.floor(duration) : (type === 'tv' ? 45 * 60 : 110 * 60);
+            const percent = dur && dur > 0 ? Math.min(100, Math.max(1, Math.round((seconds / dur) * 100))) : 5;
+            const newItem: WatchHistoryItem = {
+              id,
+              type,
+              title: type === 'tv' ? (curated?.title || `Series #${id}`) : `Movie #${id}`,
+              overview: curated?.overview || '',
+              poster_path: curated?.poster_path ?? null,
+              backdrop_path: curated?.backdrop_path ?? null,
+              season: season || (type === 'tv' ? 1 : undefined),
+              episode: episode || (type === 'tv' ? 1 : undefined),
               progressSeconds: Math.floor(seconds),
-              durationSeconds: duration ? Math.floor(duration) : updatedSeries[id].durationSeconds,
+              durationSeconds: dur,
+              progress: percent,
+              updatedAt: now,
+            };
+            finalHistory = [newItem, ...updatedHistory].slice(0, 30);
+          }
+
+          const updatedSeries = { ...state.seriesProgress };
+          if (type === 'tv') {
+            const existingSp = updatedSeries[id];
+            const curated = CURATED_SERIES.find((c) => c.id === id);
+            updatedSeries[id] = {
+              seriesId: id,
+              title: existingSp?.title && !existingSp.title.startsWith('Series #') ? existingSp.title : (curated?.title || existingSp?.title || `Series #${id}`),
+              season: season || existingSp?.season || 1,
+              episode: episode || existingSp?.episode || 1,
+              overview: existingSp?.overview || curated?.overview || '',
+              poster_path: existingSp?.poster_path ?? curated?.poster_path ?? null,
+              backdrop_path: existingSp?.backdrop_path ?? curated?.backdrop_path ?? null,
+              release_date: existingSp?.release_date || curated?.release_date,
+              progressSeconds: Math.floor(seconds),
+              durationSeconds: duration ? Math.floor(duration) : existingSp?.durationSeconds || 45 * 60,
               updatedAt: now,
             };
           }
 
           return {
-            watchHistory: updatedHistory,
+            watchHistory: finalHistory,
             seriesProgress: updatedSeries,
+            // If active TV show playback, ensure it is not blocked by watchedList
+            watchedList: type === 'tv' ? (state.watchedList || []).filter((w) => w.id !== id) : state.watchedList,
           };
         });
       },
 
       getPlaybackProgress: (id, type, season, episode) => {
-        const item = get().watchHistory.find(
-          (m) =>
-            m.id === id &&
-            m.type === type &&
-            (type !== 'tv' || !season || !episode || (m.season === season && m.episode === episode))
-        );
+        const state = get();
+        if (type === 'tv') {
+          // If specific episode requested, strictly return progress for THAT episode only
+          if (season && episode) {
+            const match = state.watchHistory.find(
+              (m) => m.id === id && m.type === 'tv' && m.season === season && m.episode === episode
+            );
+            if (match?.progressSeconds && match.progressSeconds > 5) return match.progressSeconds;
+
+            const sp = state.seriesProgress[id];
+            if (sp && sp.season === season && sp.episode === episode && sp.progressSeconds && sp.progressSeconds > 5) {
+              return sp.progressSeconds;
+            }
+
+            // New/unwatched episode must start from 0, never bleed from another episode
+            return undefined;
+          }
+
+          // Otherwise return progress for the active/latest episode
+          const sp = state.seriesProgress[id];
+          if (sp?.progressSeconds && sp.progressSeconds > 5) return sp.progressSeconds;
+
+          const item = state.watchHistory.find((m) => m.id === id && m.type === 'tv');
+          return item?.progressSeconds && item.progressSeconds > 5 ? item.progressSeconds : undefined;
+        }
+
+        const item = state.watchHistory.find((m) => m.id === id && m.type === 'movie');
         return item?.progressSeconds;
       },
     }),
@@ -583,28 +888,95 @@ export const useStreamStore = create<StreamState>()(
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         // Ensure watchedList exists
-        const watchedList = state.watchedList || [];
-        const watchedIds = new Set(watchedList.map((w) => w.id));
+        const deletedIds = new Set((state.deletedWatchedIds || []).map(Number));
+        const dismissedIds = new Set(state.dismissedHistoryIds || []);
+        state.watchedList = (state.watchedList || []).filter((w) => !deletedIds.has(Number(w.id)));
+        state.userRatings = (state.userRatings || []).filter((r) => !deletedIds.has(Number(r.id)));
+        state.watchHistory = (state.watchHistory || []).filter((h) => !deletedIds.has(Number(h.id)));
+        state.likedMedia = (state.likedMedia || []).filter((l) => !deletedIds.has(Number(l.id)));
+        state.dislikedMedia = (state.dislikedMedia || []).filter((d) => !deletedIds.has(Number(d.id)));
+        const watchedIds = new Set(state.watchedList.map((w) => Number(w.id)));
+
+        // Scan localStorage for any saved TV playback records
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (key && key.startsWith('moviewatcher_playback_tv_')) {
+                const parts = key.replace('moviewatcher_playback_tv_', '').split('_');
+                const tvId = parseInt(parts[0], 10);
+                if (tvId && !isNaN(tvId)) {
+                  // If user dismissed this title, marked it as watched, or deleted it, do NOT restore
+                  if (dismissedIds.has(tvId) || watchedIds.has(tvId) || deletedIds.has(tvId)) {
+                    localStorage.removeItem(key);
+                    continue;
+                  }
+
+                  let sNum = 1;
+                  let eNum = 1;
+                  if (parts[1] && parts[1].startsWith('s')) sNum = parseInt(parts[1].slice(1), 10) || 1;
+                  if (parts[2] && parts[2].startsWith('e')) eNum = parseInt(parts[2].slice(1), 10) || 1;
+
+                  const rawData = localStorage.getItem(key);
+                  const parsed = rawData ? JSON.parse(rawData) : null;
+                  const sec = parsed?.seconds || 0;
+                  const dur = parsed?.duration || 45 * 60;
+                  const seasonVal = parsed?.season || sNum;
+                  const episodeVal = parsed?.episode || eNum;
+
+                  if (sec > 5) {
+                    if (!state.seriesProgress) state.seriesProgress = {};
+                    if (!state.seriesProgress[tvId]) {
+                      const curated = CURATED_SERIES.find((c) => c.id === tvId);
+                      state.seriesProgress[tvId] = {
+                        seriesId: tvId,
+                        season: seasonVal,
+                        episode: episodeVal,
+                        title: curated?.title || `Series #${tvId}`,
+                        overview: curated?.overview || '',
+                        poster_path: curated?.poster_path ?? null,
+                        backdrop_path: curated?.backdrop_path ?? null,
+                        release_date: curated?.release_date || '',
+                        progressSeconds: sec,
+                        durationSeconds: dur,
+                        updatedAt: parsed?.updatedAt || Date.now(),
+                      };
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Playback localStorage scan error:', e);
+        }
 
         // Restore seriesProgress into watchHistory if missing from watchHistory
         if (state.seriesProgress) {
-          const currentHistIds = new Set((state.watchHistory || []).map((h) => h.id));
+          const currentHistIds = new Set((state.watchHistory || []).map((h) => Number(h.id)));
           for (const sId in state.seriesProgress) {
             const numId = Number(sId);
+            // If user explicitly dismissed, marked as watched, or deleted this item, remove from seriesProgress and do NOT restore
+            if (dismissedIds.has(numId) || watchedIds.has(numId) || deletedIds.has(numId)) {
+              delete state.seriesProgress[numId];
+              continue;
+            }
+
             const sp = state.seriesProgress[sId];
-            if (!currentHistIds.has(numId) && !watchedIds.has(numId)) {
+            if (!currentHistIds.has(numId) && sp.progressSeconds && sp.progressSeconds > 5) {
+              const curated = CURATED_SERIES.find((c) => c.id === numId);
               state.watchHistory.unshift({
                 id: numId,
                 type: 'tv',
-                title: sp.title || `Series #${numId}`,
-                overview: sp.overview,
-                poster_path: sp.poster_path ?? null,
-                backdrop_path: sp.backdrop_path ?? null,
-                release_date: sp.release_date,
-                season: sp.season,
-                episode: sp.episode,
-                seasons: sp.seasons,
-                episode_run_time: sp.episode_run_time,
+                title: sp.title && !sp.title.startsWith('Series #') ? sp.title : (curated?.title || sp.title || `Series #${numId}`),
+                overview: sp.overview || curated?.overview,
+                poster_path: sp.poster_path ?? curated?.poster_path ?? null,
+                backdrop_path: sp.backdrop_path ?? curated?.backdrop_path ?? null,
+                release_date: sp.release_date || curated?.release_date,
+                season: sp.season || 1,
+                episode: sp.episode || 1,
+                seasons: sp.seasons || curated?.seasons,
+                episode_run_time: sp.episode_run_time || curated?.episode_run_time,
                 progressSeconds: sp.progressSeconds,
                 durationSeconds: sp.durationSeconds,
                 updatedAt: sp.updatedAt || Date.now(),
@@ -613,9 +985,148 @@ export const useStreamStore = create<StreamState>()(
           }
         }
 
-        // Clean watchHistory: remove items that are explicitly in watchedList
-        state.watchedList = watchedList;
-        state.watchHistory = (state.watchHistory || []).filter((h) => !watchedIds.has(h.id));
+        // Ensure watchedList is populated with all rated/liked/history entries (everything other than watchlist is watched)
+        const watchedMap = new Map((state.watchedList || []).map((w) => [Number(w.id), w]));
+
+        // 1. From userRatings (Letterboxd imports and in-app ratings)
+        if (state.userRatings && state.userRatings.length > 0) {
+          for (const r of state.userRatings) {
+            const numId = Number(r.id);
+            if (numId && !deletedIds.has(numId) && !watchedMap.has(numId)) {
+              watchedMap.set(numId, {
+                id: numId,
+                title: r.title,
+                overview: '',
+                poster_path: r.poster_path,
+                backdrop_path: r.backdrop_path ?? null,
+                release_date: r.release_date || '',
+                vote_average: r.vote_average || 8.0,
+                media_type: r.type || 'movie',
+                genre_ids: r.genre_ids || [],
+              });
+            }
+          }
+        }
+
+        // 2. From likedMedia
+        if (state.likedMedia && state.likedMedia.length > 0) {
+          for (const l of state.likedMedia) {
+            const numId = Number(l.id);
+            if (numId && !deletedIds.has(numId) && !watchedMap.has(numId)) {
+              watchedMap.set(numId, {
+                id: numId,
+                title: l.title,
+                overview: l.overview || '',
+                poster_path: l.poster_path,
+                backdrop_path: l.backdrop_path ?? null,
+                release_date: l.release_date || '',
+                vote_average: l.vote_average || 8.0,
+                media_type: l.media_type || 'movie',
+                genre_ids: l.genre_ids || [],
+              });
+            }
+          }
+        }
+
+        // 3. From dislikedMedia
+        if (state.dislikedMedia && state.dislikedMedia.length > 0) {
+          for (const d of state.dislikedMedia) {
+            const numId = Number(d.id);
+            if (numId && !deletedIds.has(numId) && !watchedMap.has(numId)) {
+              watchedMap.set(numId, {
+                id: numId,
+                title: d.title,
+                overview: d.overview || '',
+                poster_path: d.poster_path,
+                backdrop_path: d.backdrop_path ?? null,
+                release_date: d.release_date || '',
+                vote_average: d.vote_average || 8.0,
+                media_type: d.media_type || 'movie',
+                genre_ids: d.genre_ids || [],
+              });
+            }
+          }
+        }
+
+        // 4. From watchHistory
+        if (state.watchHistory && state.watchHistory.length > 0) {
+          for (const h of state.watchHistory) {
+            const numId = Number(h.id);
+            if (numId && !deletedIds.has(numId) && !watchedMap.has(numId)) {
+              watchedMap.set(numId, {
+                id: numId,
+                title: h.title,
+                overview: h.overview || '',
+                poster_path: h.poster_path,
+                backdrop_path: h.backdrop_path ?? null,
+                release_date: h.release_date || '',
+                vote_average: h.vote_average || 8.0,
+                media_type: h.type || 'movie',
+                genre_ids: (h as any).genre_ids || [],
+              });
+            }
+          }
+        }
+
+        const syncedWatchedList = Array.from(watchedMap.values());
+        const allWatchedIds = new Set(syncedWatchedList.map((w) => Number(w.id)));
+
+        // Clean watchHistory: strictly exclude dismissed items and any watched items (both movies & series)
+        state.watchedList = syncedWatchedList;
+        state.dislikedMedia = state.dislikedMedia || [];
+        state.watchlist = state.watchlist || [];
+        state.likedMedia = state.likedMedia || [];
+        state.watchHistory = (state.watchHistory || []).filter(
+          (h) => !dismissedIds.has(h.id) && !allWatchedIds.has(h.id) && ((h.progressSeconds && h.progressSeconds > 5) || (h.progress && h.progress > 0))
+        );
+
+        // Synchronize ratings into likes/dislikes on rehydrate
+        if (state.userRatings && state.userRatings.length > 0) {
+          const likesMap = new Map((state.likedMedia || []).map((l) => [l.id, l]));
+          const dislikesMap = new Map((state.dislikedMedia || []).map((d) => [d.id, d]));
+
+          for (const r of state.userRatings) {
+            const val = r.rating;
+            if (val !== undefined && val !== null && !isNaN(val)) {
+              if (val >= 4.0) {
+                dislikesMap.delete(r.id);
+                if (!likesMap.has(r.id)) {
+                  likesMap.set(r.id, {
+                    id: r.id,
+                    title: r.title,
+                    poster_path: r.poster_path ?? null,
+                    backdrop_path: r.backdrop_path ?? null,
+                    release_date: r.release_date || '',
+                    vote_average: r.vote_average || 0,
+                    media_type: r.type,
+                    genre_ids: r.genre_ids || [],
+                    overview: '',
+                  });
+                }
+              } else if (val < 3.0) {
+                likesMap.delete(r.id);
+                if (!dislikesMap.has(r.id)) {
+                  dislikesMap.set(r.id, {
+                    id: r.id,
+                    title: r.title,
+                    poster_path: r.poster_path ?? null,
+                    backdrop_path: r.backdrop_path ?? null,
+                    release_date: r.release_date || '',
+                    vote_average: r.vote_average || 0,
+                    media_type: r.type,
+                    genre_ids: r.genre_ids || [],
+                    overview: '',
+                  });
+                }
+              } else {
+                likesMap.delete(r.id);
+                dislikesMap.delete(r.id);
+              }
+            }
+          }
+          state.likedMedia = Array.from(likesMap.values());
+          state.dislikedMedia = Array.from(dislikesMap.values());
+        }
       },
     }
   )

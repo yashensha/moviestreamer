@@ -181,7 +181,7 @@ export const AuthModal: React.FC = () => {
         <div className="mt-6 pt-5 border-t border-zinc-800/80 text-xs text-zinc-400 flex items-center justify-between">
           {isLogin ? (
             <div>
-              <span>New to MovieWatcher? </span>
+              <span>New to SEVEN? </span>
               <button
                 type="button"
                 onClick={openRegisterModal}

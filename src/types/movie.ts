@@ -40,6 +40,8 @@ export interface MediaItem {
   seasons?: Season[];
   season?: number;
   episode?: number;
+  runtime?: number;
+  certification?: string;
   episode_run_time?: number[];
   tagline?: string;
 }
@@ -95,6 +97,7 @@ export interface WatchHistoryItem {
   episode_run_time?: number[];
   progressSeconds?: number;
   durationSeconds?: number;
+  progress?: number;
   updatedAt: number;
 }
 
@@ -120,5 +123,18 @@ export interface LetterboxdRawEntry {
   date?: string;
   letterboxdUri?: string;
   isWatchlist?: boolean;
+}
+
+export interface PersonItem {
+  id: number;
+  name: string;
+  profile_path: string | null;
+  known_for_department?: string;
+  known_for?: MediaItem[];
+}
+
+export interface MultiSearchResult {
+  media: MediaItem[];
+  people: PersonItem[];
 }
 

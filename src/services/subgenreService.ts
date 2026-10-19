@@ -16,6 +16,14 @@ let movieSubgenresMap: Record<string, string[]> | null = null;
 let isLoadingMovieSubgenres = false;
 const loadCallbacks: Array<(map: Record<string, string[]>) => void> = [];
 
+// Eagerly initiate loading in the background
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    getMovieSubgenresMap().catch(() => {});
+    getTVSubgenresMap().catch(() => {});
+  }, 10);
+}
+
 /**
  * Lazily loads the 3MB movie subgenres dataset on demand
  * so initial app load stays instant.
@@ -44,6 +52,10 @@ export async function getMovieSubgenresMap(): Promise<Record<string, string[]>> 
   } finally {
     isLoadingMovieSubgenres = false;
   }
+}
+
+export function getMovieSubgenresMapSync(): Record<string, string[]> | null {
+  return movieSubgenresMap;
 }
 
 /**
@@ -245,3 +257,131 @@ export async function extractSubgenresForTitle(
 
   return classification;
 }
+
+// Known Auteur Directors & Creators in cinema/TV
+export const KNOWN_DIRECTORS = new Set([
+  'christopher nolan', 'quentin tarantino', 'denis villeneuve', 'martin scorsese', 'david fincher',
+  'alfred hitchcock', 'stanley kubrick', 'steven spielberg', 'coen brothers', 'ridley scott',
+  'james cameron', 'hayao miyazaki', 'wes anderson', 'guillermo del toro', 'bong joon-ho',
+  'david lynch', 'woody allen', 'clint eastwood', 'francis ford coppola', 'peter jackson',
+  'george lucas', 'tim burton', 'michael mann', 'paul thomas anderson', 'akira kurosawa',
+  'ingmar bergman', 'pedro almodovar', 'vince gilligan', 'damien chazelle', 'greta gerwig',
+  'jordan peele', 'ari aster', 'sam raimi', 'edgar wright', 'david cronenberg',
+  'lars von trier', 'guy ritchie', 'luc besson', 'sergio leone', 'roman polanski',
+  'terry gilliam', 'john carpenter', 'richard linklater', 'robert rodriguez', 'zack snyder',
+  'wachowskis', 'lana wachowski', 'george miller', 'chad stahelski', 'david simon',
+  'jonathan nolan', 'david benioff', 'craig mazin', 'charlie brooker', 'matt duffer',
+  'ross duffer', 'park chan-wook', 'alfonso cuaron', 'alejandro g. inarritu', 'sam mendes'
+]);
+
+// Known Key Actors in cinema/TV
+export const KNOWN_ACTORS = new Set([
+  'cillian murphy', 'christian bale', 'heath ledger', 'brad pitt', 'leonardo dicaprio',
+  'tom hanks', 'tom cruise', 'robert de niro', 'al pacino', 'morgan freeman',
+  'johnny depp', 'keanu reeves', 'ryan gosling', 'florence pugh', 'timothee chalamet',
+  'zendaya', 'scarlett johansson', 'emma stone', 'meryl streep', 'matt damon',
+  'edward norton', 'bruce willis', 'arnold schwarzenegger', 'harrison ford', 'samuel l. jackson',
+  'gary oldman', 'anthony hopkins', 'jack nicholson', 'robin williams', 'hugh jackman',
+  'jake gyllenhaal', 'bryan cranston', 'aaron paul', 'pedro pascal', 'oscar isaac',
+  'adam driver', 'michael fassbender', 'joaquin phoenix', 'willem dafoe', 'matthew mcconaughey',
+  'javier bardem', 'benedict cumberbatch', 'tom hardy', 'mads mikkelsen', 'charlize theron',
+  'cate blanchett', 'jennifer lawrence', 'amy adams', 'natalie portman', 'anne hathaway',
+  'keira knightley', 'sigourney weaver', 'kate winslet', 'tilda swinton'
+]);
+
+export function formatEntityName(name: string): string {
+  if (!name) return '';
+  return name
+    .split(' ')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+export interface ExtractedTitleEntities {
+  directors: string[];
+  cast: string[];
+  tags: string[];
+  subgenres: string[];
+  clusters: string[];
+}
+
+export function extractEntitiesFromTitleSync(
+  id: number,
+  type: MediaType = 'movie'
+): ExtractedTitleEntities {
+  const result: ExtractedTitleEntities = {
+    directors: [],
+    cast: [],
+    tags: [],
+    subgenres: [],
+    clusters: [],
+  };
+
+  if (type === 'tv') {
+    if (tvSubgenresMap) {
+      const entry = tvSubgenresMap[String(id)];
+      if (entry) {
+        if (Array.isArray(entry.creators)) {
+          entry.creators.forEach((c: string) => {
+            if (c) result.directors.push(formatEntityName(c));
+          });
+        }
+        if (Array.isArray(entry.directors)) {
+          entry.directors.forEach((d: string) => {
+            if (d) {
+              const formatted = formatEntityName(d);
+              if (!result.directors.includes(formatted)) result.directors.push(formatted);
+            }
+          });
+        }
+        if (Array.isArray(entry.cast)) {
+          entry.cast.slice(0, 5).forEach((act: string) => {
+            if (act) result.cast.push(formatEntityName(act));
+          });
+        }
+        if (Array.isArray(entry.subgenres)) {
+          result.subgenres.push(...entry.subgenres);
+        }
+        if (Array.isArray(entry.clusters)) {
+          result.clusters.push(...entry.clusters);
+        }
+        if (Array.isArray(entry.tags)) {
+          result.tags.push(...entry.tags);
+        }
+        if (Array.isArray(entry.keywords)) {
+          result.tags.push(...entry.keywords);
+        }
+      }
+    }
+  } else {
+    // Movie
+    if (movieSubgenresMap) {
+      const rawTags = movieSubgenresMap[String(id)] || [];
+      for (const t of rawTags) {
+        const lower = t.toLowerCase().trim();
+        if (!lower) continue;
+
+        if (KNOWN_DIRECTORS.has(lower)) {
+          result.directors.push(formatEntityName(lower));
+        } else if (KNOWN_ACTORS.has(lower)) {
+          result.cast.push(formatEntityName(lower));
+        } else {
+          result.tags.push(lower);
+        }
+      }
+      const classified = classifyKeywordsToClusters(result.tags);
+      result.subgenres.push(...classified.subgenres);
+      result.clusters.push(...classified.clusters);
+    }
+  }
+
+  // Deduplicate
+  result.directors = Array.from(new Set(result.directors));
+  result.cast = Array.from(new Set(result.cast));
+  result.tags = Array.from(new Set(result.tags));
+  result.subgenres = Array.from(new Set(result.subgenres));
+  result.clusters = Array.from(new Set(result.clusters));
+
+  return result;
+}
+

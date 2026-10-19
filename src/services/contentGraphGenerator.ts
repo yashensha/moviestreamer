@@ -535,8 +535,34 @@ export async function generateContentGraphCandidates(
   // Await all parallel graph queries
   await Promise.allSettled(queryPromises);
 
-  // Apply BM25 genre affinity boost across all candidates
+  // Apply Dynamic Multi-Entity Taste Matching Boost across all candidates:
   for (const candidate of candidateMap.values()) {
+    // 1. Director affinity boost (HIGH weight: 1.8x)
+    if (candidate.matchedDirector) {
+      const dirScore = matrix.directorWeights[candidate.matchedDirector] || 0;
+      candidate.graphScore += dirScore * 1.8;
+    }
+
+    // 2. Cast / Actor affinity boost (1.0x)
+    if (candidate.matchedCast && candidate.matchedCast.length > 0) {
+      for (const actor of candidate.matchedCast) {
+        const actorScore = matrix.actorWeights[actor] || 0;
+        candidate.graphScore += actorScore * 1.0;
+      }
+    }
+
+    // 3. Thematic Tags & Subgenre affinity boost (1.4x)
+    const allCandidateTags = [
+      ...(candidate.matchedSubgenres || []),
+      ...(candidate.matchedClusters || []),
+      ...(candidate.matchedKeywords || []),
+    ];
+    for (const tag of allCandidateTags) {
+      const tagScore = matrix.tagWeights[tag.toLowerCase()] || 0;
+      candidate.graphScore += tagScore * 1.4;
+    }
+
+    // 4. Coarse Genre boost (baseline)
     const genreBoost = (candidate.item.genre_ids || []).reduce((acc, gid) => {
       return acc + (matrix.genreWeights[gid] || 0) * 0.2;
     }, 0);

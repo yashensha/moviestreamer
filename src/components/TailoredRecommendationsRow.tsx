@@ -1,138 +1,32 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { MediaItem } from '../types/movie';
 import { useStreamStore } from '../store/useStreamStore';
 import {
   generateFullRecommendationPipeline,
   type CuratedRecommendationRows,
-  type ScoredRecommendationItem,
 } from '../services/recommendationPipeline';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { MediaCard } from './MediaCard';
-import { StarRatingModal } from './StarRatingModal';
+import { PopularOnNetflixRow, type CardVariant } from './PopularOnNetflixRow';
 
 interface TailoredRecommendationsRowProps {
   onSelect: (item: MediaItem) => void;
+  onPlay?: (item: MediaItem) => void;
   mediaType?: 'movie' | 'tv';
   title?: string;
+  cardVariant?: CardVariant;
 }
-
-// Single Standardized Category Row Component
-const StandardizedRecommendationRow: React.FC<{
-  title: string;
-  items: ScoredRecommendationItem[];
-  onSelect: (item: MediaItem) => void;
-  isLiked: (id: number) => boolean;
-  toggleLike: (item: MediaItem) => void;
-  isWatched: (id: number) => boolean;
-  toggleWatched: (item: MediaItem) => void;
-  isInWatchlist: (id: number) => boolean;
-  toggleWatchlist: (item: MediaItem) => void;
-  getMediaRating: (id: number) => number | undefined;
-  onOpenRatingModal: (item: MediaItem) => void;
-}> = ({
-  title,
-  items,
-  onSelect,
-  isLiked,
-  toggleLike,
-  isWatched,
-  toggleWatched,
-  isInWatchlist,
-  toggleWatchlist,
-  getMediaRating,
-  onOpenRatingModal,
-}) => {
-  const rowRef = useRef<HTMLDivElement>(null);
-
-  const scroll = (direction: 'left' | 'right') => {
-    if (rowRef.current) {
-      const { scrollLeft, clientWidth } = rowRef.current;
-      const scrollAmount = clientWidth * 0.75;
-      rowRef.current.scrollTo({
-        left: direction === 'left' ? scrollLeft - scrollAmount : scrollLeft + scrollAmount,
-        behavior: 'smooth',
-      });
-    }
-  };
-
-  if (!items || items.length === 0) return null;
-
-  return (
-    <div className="space-y-2 md:space-y-3 px-4 md:px-12 my-6">
-      {/* Standardized Row Header */}
-      <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
-        <h2 className="text-lg md:text-2xl font-bold text-white tracking-tight hover:text-rose-400 transition cursor-pointer flex items-center gap-2">
-          <span>{title}</span>
-        </h2>
-      </div>
-
-      {/* Row Container with Navigation Arrows */}
-      <div className="relative group">
-        {/* Left Arrow */}
-        <button
-          onClick={() => scroll('left')}
-          className="absolute left-0 top-0 bottom-0 z-30 w-10 md:w-12 bg-black/70 hover:bg-black/90 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer rounded-r"
-          aria-label="Scroll Left"
-        >
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-
-        {/* Scrolling Items */}
-        <div
-          ref={rowRef}
-          className="flex items-center gap-3 md:gap-4 overflow-x-auto scrollbar-none py-3 scroll-smooth"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        >
-          {items.map((scored, index) => {
-            const item = scored.item;
-            return (
-              <MediaCard
-                key={`${item.id}-${index}`}
-                item={item}
-                onSelect={onSelect}
-                isLiked={isLiked(item.id)}
-                onToggleLike={() => toggleLike(item)}
-                isWatched={isWatched(item.id)}
-                onToggleWatched={() => toggleWatched(item)}
-                isInWatchlist={isInWatchlist(item.id)}
-                onToggleWatchlist={() => toggleWatchlist(item)}
-                userRating={getMediaRating(item.id)}
-                onOpenRatingModal={onOpenRatingModal}
-              />
-            );
-          })}
-        </div>
-
-        {/* Right Arrow */}
-        <button
-          onClick={() => scroll('right')}
-          className="absolute right-0 top-0 bottom-0 z-30 w-10 md:w-12 bg-black/70 hover:bg-black/90 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer rounded-l"
-          aria-label="Scroll Right"
-        >
-          <ChevronRight className="w-6 h-6" />
-        </button>
-      </div>
-    </div>
-  );
-};
 
 export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProps> = ({
   onSelect,
+  onPlay,
   mediaType,
   title,
+  cardVariant = 'tall',
 }) => {
   const likedMedia = useStreamStore((state) => state.likedMedia);
   const watchHistory = useStreamStore((state) => state.watchHistory);
   const userRatings = useStreamStore((state) => state.userRatings);
-  const toggleLike = useStreamStore((state) => state.toggleLike);
-  const isLiked = useStreamStore((state) => state.isLiked);
-  const toggleWatched = useStreamStore((state) => state.toggleWatched);
   const isWatched = useStreamStore((state) => state.isWatched);
-  const toggleWatchlist = useStreamStore((state) => state.toggleWatchlist);
-  const isInWatchlist = useStreamStore((state) => state.isInWatchlist);
-  const getMediaRating = useStreamStore((state) => state.getMediaRating);
-
-  const [ratingModalMedia, setRatingModalMedia] = useState<MediaItem | null>(null);
+  const dislikedMedia = useStreamStore((state) => state.dislikedMedia);
 
   const [pipelineData, setPipelineData] = useState<CuratedRecommendationRows>({
     topPicks: [],
@@ -144,7 +38,7 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
   useEffect(() => {
     let isMounted = true;
 
-    generateFullRecommendationPipeline(watchHistory, likedMedia, userRatings, {
+    generateFullRecommendationPipeline(watchHistory, likedMedia, userRatings, dislikedMedia, {
       preferredType: mediaType,
     })
       .then((res) => {
@@ -159,7 +53,7 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
     return () => {
       isMounted = false;
     };
-  }, [likedMedia, watchHistory, userRatings, mediaType]);
+  }, [likedMedia, watchHistory, userRatings, dislikedMedia, mediaType]);
 
   const defaultTitle =
     title ||
@@ -193,64 +87,40 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
     };
   }, [pipelineData.hiddenGems, isWatched]);
 
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Row 1: Top Picks for You */}
-      <StandardizedRecommendationRow
-        title={defaultTitle}
-        items={filteredTopPicks}
-        onSelect={onSelect}
-        isLiked={isLiked}
-        toggleLike={toggleLike}
-        isWatched={isWatched}
-        toggleWatched={toggleWatched}
-        isInWatchlist={isInWatchlist}
-        toggleWatchlist={toggleWatchlist}
-        getMediaRating={getMediaRating}
-        onOpenRatingModal={setRatingModalMedia}
-      />
-
-      {/* Row 2: Because You Watched [Title] - Standardized, no icon/subtitle/badge, dynamic on refresh */}
-      {filteredBecauseYouWatched && (
-        <StandardizedRecommendationRow
-          title={`Because You Watched "${filteredBecauseYouWatched.seedTitle}"`}
-          items={filteredBecauseYouWatched.items}
+      {filteredTopPicks.length > 0 && (
+        <PopularOnNetflixRow
+          title={defaultTitle}
+          items={filteredTopPicks.map((p) => p.item)}
           onSelect={onSelect}
-          isLiked={isLiked}
-          toggleLike={toggleLike}
-          isWatched={isWatched}
-          toggleWatched={toggleWatched}
-          isInWatchlist={isInWatchlist}
-          toggleWatchlist={toggleWatchlist}
-          getMediaRating={getMediaRating}
-          onOpenRatingModal={setRatingModalMedia}
+          onPlay={onPlay}
+          variant="backdrop"
+        />
+      )}
+
+      {/* Row 2: Because You Watched [Title] - Tall Card Variant with Hover Preview */}
+      {filteredBecauseYouWatched && (
+        <PopularOnNetflixRow
+          title={`Because You Watched "${filteredBecauseYouWatched.seedTitle}"`}
+          items={filteredBecauseYouWatched.items.map((p) => p.item)}
+          onSelect={onSelect}
+          onPlay={onPlay}
+          variant={cardVariant}
         />
       )}
 
       {/* Row 3: Hidden Gems */}
       {filteredHiddenGems && (
-        <StandardizedRecommendationRow
+        <PopularOnNetflixRow
           title={`Hidden Gems in ${filteredHiddenGems.genreName}`}
-          items={filteredHiddenGems.items}
+          items={filteredHiddenGems.items.map((p) => p.item)}
           onSelect={onSelect}
-          isLiked={isLiked}
-          toggleLike={toggleLike}
-          isWatched={isWatched}
-          toggleWatched={toggleWatched}
-          isInWatchlist={isInWatchlist}
-          toggleWatchlist={toggleWatchlist}
-          getMediaRating={getMediaRating}
-          onOpenRatingModal={setRatingModalMedia}
+          onPlay={onPlay}
+          variant="backdrop"
         />
       )}
-
-      {/* 5-Star Letterboxd Rating Modal */}
-      <StarRatingModal
-        isOpen={!!ratingModalMedia}
-        onClose={() => setRatingModalMedia(null)}
-        media={ratingModalMedia}
-      />
     </div>
   );
 };

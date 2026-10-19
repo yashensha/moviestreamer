@@ -42,12 +42,10 @@ export const MovieRow: React.FC<MovieRowProps> = ({
 
   return (
     <div className="space-y-2 md:space-y-3 px-4 md:px-12 my-6">
-      {/* Row Header */}
-      <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
-        <h2 className="text-lg md:text-2xl font-bold text-white tracking-tight hover:text-rose-400 transition cursor-pointer flex items-center gap-2">
-          <span>{title}</span>
-        </h2>
-      </div>
+      {/* Row Header matching Popular on Netflix */}
+      <h2 className="text-base sm:text-lg md:text-xl font-bold text-white tracking-tight hover:text-zinc-300 transition cursor-pointer inline-flex items-center gap-2">
+        <span>{title}</span>
+      </h2>
 
       {/* Row Container with Navigation Arrows */}
       <div className="relative group">

@@ -165,7 +165,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div className="bg-[#181818] border border-zinc-800 w-full max-w-2xl shadow-2xl relative flex flex-col max-h-[90vh] overflow-hidden text-zinc-100">
         {/* Top Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-[#141414]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-black">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-none bg-[#00E054]/15 border border-[#00E054]/40 flex items-center justify-center text-[#00E054]">
               <Film className="w-4 h-4" />

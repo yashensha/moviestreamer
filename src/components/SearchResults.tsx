@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import type { MediaItem } from '../types/movie';
-import { getPosterUrl } from '../services/tmdb';
-import { Play, Star, Film, Tv, Heart, Check } from 'lucide-react';
+import type { MediaItem, PersonItem } from '../types/movie';
+import { getPosterUrl, fetchPersonCombinedCredits } from '../services/tmdb';
+import { Play, Star, Film, Tv, Heart, Check, Bookmark, User, ArrowLeft, Loader2 } from 'lucide-react';
 import { useStreamStore } from '../store/useStreamStore';
 
 interface SearchResultsProps {
   query: string;
   results: MediaItem[];
+  people?: PersonItem[];
   loading: boolean;
   onSelect: (item: MediaItem) => void;
   onClear: () => void;
@@ -15,178 +16,376 @@ interface SearchResultsProps {
 export const SearchResults: React.FC<SearchResultsProps> = ({
   query,
   results,
+  people = [],
   loading,
   onSelect,
   onClear,
 }) => {
-  const [filter, setFilter] = useState<'all' | 'movie' | 'tv'>('all');
+  const [filter, setFilter] = useState<'all' | 'movie' | 'tv' | 'people'>('all');
+  const [selectedPerson, setSelectedPerson] = useState<PersonItem | null>(null);
+  const [personCredits, setPersonCredits] = useState<MediaItem[]>([]);
+  const [loadingCredits, setLoadingCredits] = useState(false);
+
   const toggleLike = useStreamStore((state) => state.toggleLike);
   const isLiked = useStreamStore((state) => state.isLiked);
   const toggleWatched = useStreamStore((state) => state.toggleWatched);
   const isWatched = useStreamStore((state) => state.isWatched);
+  const toggleWatchlist = useStreamStore((state) => state.toggleWatchlist);
+  const isInWatchlist = useStreamStore((state) => state.isInWatchlist);
 
-  const filteredResults = results.filter((item) => {
+  const filteredMedia = results.filter((item) => {
     if (filter === 'all') return true;
+    if (filter === 'people') return false;
     return item.media_type === filter;
   });
 
+  const handleSelectPerson = async (person: PersonItem) => {
+    setSelectedPerson(person);
+    setLoadingCredits(true);
+    const credits = await fetchPersonCombinedCredits(person.id);
+    setPersonCredits(credits.length > 0 ? credits : (person.known_for || []));
+    setLoadingCredits(false);
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-4 md:px-12 pt-28 pb-20 space-y-6">
+    <div className="min-h-screen bg-black text-zinc-100 max-w-7xl mx-auto px-4 md:px-12 pt-24 pb-24 space-y-6">
       {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-850 pb-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-            Search results for <span className="text-rose-500 font-extrabold">"{query}"</span>
-          </h2>
-          <p className="text-xs text-zinc-400 mt-1">
-            {loading ? 'Searching titles...' : `Found ${filteredResults.length} matching titles`}
-          </p>
+          {selectedPerson ? (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSelectedPerson(null)}
+                className="p-1.5 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white transition cursor-pointer"
+                title="Back to search results"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                  <span>{selectedPerson.name}</span>
+                  <span className="text-xs uppercase tracking-wider bg-rose-950/70 text-rose-300 border border-rose-800/60 px-2 py-0.5 rounded-[2px] font-mono">
+                    {selectedPerson.known_for_department || 'Filmography'}
+                  </span>
+                </h2>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Showing filmography and associated productions
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                Search results for <span className="text-[#E50914] font-extrabold">"{query}"</span>
+              </h2>
+              <p className="text-xs text-zinc-400 mt-1">
+                {loading
+                  ? 'Searching titles and cast...'
+                  : `Found ${results.length} titles${people.length > 0 ? ` and ${people.length} people` : ''}`}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Filter Pills */}
-        <div className="flex items-center gap-2">
+        {!selectedPerson && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setFilter('all')}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                filter === 'all'
+                  ? 'bg-[#E50914] text-white border-[#E50914]'
+                  : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+              }`}
+            >
+              All ({results.length + people.length})
+            </button>
+            <button
+              onClick={() => setFilter('movie')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                filter === 'movie'
+                  ? 'bg-[#E50914] text-white border-[#E50914]'
+                  : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+              }`}
+            >
+              <Film className="w-3 h-3" /> Movies ({results.filter((r) => r.media_type === 'movie').length})
+            </button>
+            <button
+              onClick={() => setFilter('tv')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                filter === 'tv'
+                  ? 'bg-[#E50914] text-white border-[#E50914]'
+                  : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+              }`}
+            >
+              <Tv className="w-3 h-3" /> Shows ({results.filter((r) => r.media_type === 'tv').length})
+            </button>
+            {people.length > 0 && (
+              <button
+                onClick={() => setFilter('people')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                  filter === 'people'
+                    ? 'bg-[#E50914] text-white border-[#E50914]'
+                    : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+                }`}
+              >
+                <User className="w-3 h-3" /> People ({people.length})
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Selected Person Filmography View */}
+      {selectedPerson ? (
+        loadingCredits ? (
+          <div className="flex flex-col items-center justify-center py-20 space-y-3">
+            <Loader2 className="w-8 h-8 text-[#E50914] animate-spin" />
+            <p className="text-sm text-zinc-400">Loading {selectedPerson.name}'s filmography...</p>
+          </div>
+        ) : personCredits.length === 0 ? (
+          <div className="text-center py-16 space-y-2 text-zinc-400">
+            <p className="text-sm">No streaming titles currently indexed for this person.</p>
+            <button
+              onClick={() => setSelectedPerson(null)}
+              className="text-xs text-rose-400 hover:underline cursor-pointer"
+            >
+              Back to all search results
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between text-xs text-zinc-400">
+              <span>{personCredits.length} titles in filmography</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+              {personCredits.map((item) => (
+                <SearchResultCard
+                  key={`person-credit-${item.id}`}
+                  item={item}
+                  onSelect={onSelect}
+                  isWatched={isWatched(item.id)}
+                  isLiked={isLiked(item.id)}
+                  isInWatchlist={isInWatchlist(item.id)}
+                  onToggleWatched={() => toggleWatched(item)}
+                  onToggleLike={() => toggleLike(item)}
+                  onToggleWatchlist={() => toggleWatchlist(item)}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      ) : loading ? (
+        <div className="flex flex-col items-center justify-center py-24 space-y-4">
+          <Loader2 className="w-10 h-10 text-[#E50914] animate-spin" />
+          <p className="text-sm text-zinc-400 font-medium">Searching titles and creators...</p>
+        </div>
+      ) : filteredMedia.length === 0 && (filter === 'people' ? people.length === 0 : true) ? (
+        <div className="text-center py-20 space-y-3 bg-zinc-950/40 border border-zinc-900 p-8 rounded-[4px]">
+          <p className="text-base text-zinc-300">
+            No matching titles or creators found for <span className="font-semibold text-white">"{query}"</span>.
+          </p>
+          <p className="text-xs text-zinc-500 max-w-md mx-auto">
+            Try searching for titles (e.g. "Oppenheimer", "Stranger Things") or people (e.g. "Christopher Nolan", "Cillian Murphy").
+          </p>
           <button
-            onClick={() => setFilter('all')}
-            className={`px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
-              filter === 'all'
-                ? 'bg-rose-600 text-white border-rose-500'
-                : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-white'
-            }`}
+            onClick={onClear}
+            className="mt-2 px-4 py-2 rounded-[3px] bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold transition cursor-pointer"
           >
-            All ({results.length})
+            Clear Search & Browse
           </button>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {/* People Spotlight Row (when in 'all' or 'people' view) */}
+          {(filter === 'all' || filter === 'people') && people.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-xs uppercase font-bold tracking-wider text-zinc-400 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-rose-400" />
+                <span>Cast & Directors ({people.length})</span>
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {people.slice(0, 4).map((person) => (
+                  <div
+                    key={`person-${person.id}`}
+                    onClick={() => handleSelectPerson(person)}
+                    className="flex items-center gap-3.5 p-3 bg-zinc-900/70 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 rounded-[3px] cursor-pointer transition group"
+                  >
+                    <div className="w-14 h-14 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0 border border-zinc-700 group-hover:border-rose-500 transition">
+                      <img
+                        src={getPosterUrl(person.profile_path, 'w185')}
+                        alt={person.name}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-sm font-bold text-white group-hover:text-rose-400 transition truncate">
+                        {person.name}
+                      </h4>
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
+                        {person.known_for_department || 'Actor / Director'}
+                      </p>
+                      {person.known_for && person.known_for.length > 0 && (
+                        <p className="text-[10px] text-zinc-500 truncate mt-1">
+                          Known for: {person.known_for.map((k) => k.title).slice(0, 2).join(', ')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Titles Results Grid */}
+          {filter !== 'people' && filteredMedia.length > 0 && (
+            <div className="space-y-3">
+              {people.length > 0 && filter === 'all' && (
+                <h3 className="text-xs uppercase font-bold tracking-wider text-zinc-400 flex items-center gap-1.5">
+                  <Film className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Movies & Series ({filteredMedia.length})</span>
+                </h3>
+              )}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+                {filteredMedia.map((item) => (
+                  <SearchResultCard
+                    key={`search-item-${item.media_type}-${item.id}`}
+                    item={item}
+                    onSelect={onSelect}
+                    isWatched={isWatched(item.id)}
+                    isLiked={isLiked(item.id)}
+                    isInWatchlist={isInWatchlist(item.id)}
+                    onToggleWatched={() => toggleWatched(item)}
+                    onToggleLike={() => toggleLike(item)}
+                    onToggleWatchlist={() => toggleWatchlist(item)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface SearchResultCardProps {
+  item: MediaItem;
+  onSelect: (item: MediaItem) => void;
+  isWatched: boolean;
+  isLiked: boolean;
+  isInWatchlist: boolean;
+  onToggleWatched: () => void;
+  onToggleLike: () => void;
+  onToggleWatchlist: () => void;
+}
+
+const SearchResultCard: React.FC<SearchResultCardProps> = ({
+  item,
+  onSelect,
+  isWatched,
+  isLiked,
+  isInWatchlist,
+  onToggleWatched,
+  onToggleLike,
+  onToggleWatchlist,
+}) => {
+  const poster = getPosterUrl(item.poster_path);
+  const year = item.release_date ? new Date(item.release_date).getFullYear() : '';
+
+  return (
+    <div
+      onClick={() => onSelect(item)}
+      className="group relative bg-[#121212] rounded-[3px] overflow-hidden border border-zinc-800/90 hover:border-zinc-500 transition-all duration-300 hover:scale-105 cursor-pointer shadow-lg flex flex-col"
+    >
+      <div className="relative aspect-[2/3] w-full bg-zinc-950 overflow-hidden">
+        <img
+          src={poster}
+          alt={item.title}
+          loading="lazy"
+          className="w-full h-full object-cover transition duration-300 group-hover:brightness-105"
+        />
+
+        {/* Center Play Icon on Hover */}
+        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <div className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-xl">
+            <Play className="w-5 h-5 fill-black ml-0.5" />
+          </div>
+        </div>
+
+        {/* Watched Badge top-left */}
+        {isWatched && (
+          <div className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-emerald-600 text-white text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-[2px] shadow border border-emerald-400/40">
+            <Check className="w-2.5 h-2.5 stroke-[3]" />
+            <span>Watched</span>
+          </div>
+        )}
+
+        {/* Top-Right Action Pill (Watchlist, Watched, Like) */}
+        <div className="absolute top-2 right-2 z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* Watchlist Button */}
           <button
-            onClick={() => setFilter('movie')}
-            className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
-              filter === 'movie'
-                ? 'bg-rose-600 text-white border-rose-500'
-                : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-white'
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleWatchlist();
+            }}
+            className={`w-7 h-7 rounded-[3px] flex items-center justify-center transition cursor-pointer backdrop-blur-md border border-white/20 ${
+              isInWatchlist
+                ? 'bg-amber-600 text-white border-amber-400'
+                : 'bg-black/75 text-zinc-300 hover:text-white hover:bg-black'
             }`}
+            title={isInWatchlist ? 'In your Watchlist (Click to remove)' : 'Add to Watchlist'}
           >
-            <Film className="w-3 h-3" /> Movies
+            <Bookmark className={`w-3.5 h-3.5 ${isInWatchlist ? 'fill-white stroke-[2.5]' : ''}`} />
           </button>
+
+          {/* Mark Watched Button */}
           <button
-            onClick={() => setFilter('tv')}
-            className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
-              filter === 'tv'
-                ? 'bg-rose-600 text-white border-rose-500'
-                : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-white'
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleWatched();
+            }}
+            className={`w-7 h-7 rounded-[3px] flex items-center justify-center transition cursor-pointer backdrop-blur-md border border-white/20 ${
+              isWatched
+                ? 'bg-emerald-600 text-white border-emerald-400'
+                : 'bg-black/75 text-zinc-300 hover:text-white hover:bg-black'
             }`}
+            title={isWatched ? 'Watched (Click to unmark)' : 'Mark as watched'}
           >
-            <Tv className="w-3 h-3" /> Series
+            <Check className={`w-3.5 h-3.5 stroke-[2.5] ${isWatched ? 'text-white' : ''}`} />
+          </button>
+
+          {/* Like Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleLike();
+            }}
+            className={`w-7 h-7 rounded-[3px] flex items-center justify-center transition cursor-pointer backdrop-blur-md border border-white/20 ${
+              isLiked
+                ? 'bg-[#E50914] text-white border-rose-500'
+                : 'bg-black/75 text-zinc-300 hover:text-white hover:bg-black'
+            }`}
+            title={isLiked ? 'Liked' : 'Like'}
+          >
+            <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-white text-white' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* Loading state */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 space-y-4">
-          <div className="w-10 h-10 border-3 border-rose-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-zinc-400">Searching titles...</p>
+      <div className="p-2.5 flex-grow flex flex-col justify-between">
+        <h4 className="font-bold text-xs sm:text-sm text-white truncate group-hover:text-rose-400 transition-colors">
+          {item.title}
+        </h4>
+        <div className="flex items-center justify-between text-[11px] text-zinc-400 mt-1">
+          <span className="text-zinc-500">{year || '2024'}</span>
+          <span className="flex items-center gap-0.5 text-amber-400 font-semibold">
+            <Star className="w-2.5 h-2.5 fill-amber-400" />
+            {item.vote_average ? item.vote_average.toFixed(1) : ''}
+          </span>
         </div>
-      ) : filteredResults.length === 0 ? (
-        <div className="text-center py-20 space-y-3">
-          <p className="text-base text-zinc-300">
-            No matching titles found for <span className="font-semibold text-white">"{query}"</span>.
-          </p>
-          <p className="text-xs text-zinc-500">
-            Try searching with movie or series names, e.g. "Dune", "Stranger Things", "Oppenheimer".
-          </p>
-          <button
-            onClick={onClear}
-            className="mt-2 px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold transition cursor-pointer"
-          >
-            Back to Browse
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {filteredResults.map((item) => {
-            const poster = getPosterUrl(item.poster_path);
-            const year = item.release_date
-              ? new Date(item.release_date).getFullYear()
-              : '';
-
-            const watched = isWatched(item.id);
-            const liked = isLiked(item.id);
-
-            return (
-              <div
-                key={`${item.media_type}-${item.id}`}
-                onClick={() => onSelect(item)}
-                className="group relative bg-[#181818] rounded-md overflow-hidden border border-zinc-800 hover:border-zinc-600 transition-all duration-300 hover:scale-105 cursor-pointer shadow-lg"
-              >
-                <div className="relative aspect-[2/3] w-full bg-zinc-900">
-                  <img
-                    src={poster}
-                    alt={item.title}
-                    loading="lazy"
-                    className="w-full h-full object-cover transition duration-300 group-hover:brightness-110"
-                  />
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <div className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg">
-                      <Play className="w-5 h-5 fill-black ml-0.5" />
-                    </div>
-                  </div>
-
-                  {/* Watched Badge top-left */}
-                  {watched && (
-                    <div className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-emerald-600/95 text-white text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shadow backdrop-blur-sm border border-emerald-400/50">
-                      <Check className="w-2.5 h-2.5 stroke-[3]" />
-                      <span>Watched</span>
-                    </div>
-                  )}
-
-                  {/* Top-Right Actions: Watched & Like */}
-                  <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleWatched(item);
-                      }}
-                      className={`w-7 h-7 rounded-none flex items-center justify-center transition-all cursor-pointer ${
-                        watched
-                          ? 'bg-emerald-600 text-white border-emerald-400'
-                          : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
-                      } backdrop-blur-sm border border-white/20`}
-                      title={watched ? 'Watched! Click to unmark' : 'Mark as watched'}
-                    >
-                      <Check className={`w-3.5 h-3.5 stroke-[2.5] ${watched ? 'text-white' : ''}`} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleLike(item);
-                      }}
-                      className={`w-7 h-7 rounded-none flex items-center justify-center transition-all cursor-pointer ${
-                        liked
-                          ? 'bg-rose-600 text-white'
-                          : 'bg-black/60 text-zinc-300 hover:text-white hover:bg-black/90'
-                      } backdrop-blur-sm border border-white/20`}
-                      title={liked ? 'Liked! Click to unlike' : 'Like title to train recommendations'}
-                    >
-                      <Heart className={`w-3.5 h-3.5 ${liked ? 'fill-white' : ''}`} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-3">
-                  <h4 className="font-bold text-xs sm:text-sm text-white truncate group-hover:text-rose-400 transition-colors">
-                    {item.title}
-                  </h4>
-                  <div className="flex items-center justify-between text-[11px] text-zinc-400 mt-1">
-                    <span>{year || '2024'}</span>
-                    <span className="flex items-center gap-0.5 text-amber-400 font-semibold">
-                      <Star className="w-2.5 h-2.5 fill-amber-400" />
-                      {item.vote_average ? item.vote_average.toFixed(1) : ''}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      </div>
     </div>
   );
 };
