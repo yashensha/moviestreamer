@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import type { MediaItem } from '../types/movie';
 import { useStreamStore } from '../store/useStreamStore';
 import {
-  generateFullRecommendationPipeline,
-  type CuratedRecommendationRows,
-} from '../services/recommendationPipeline';
+  runTasteRecommendationPipeline,
+  buildUserTasteProfile,
+  type TasteEngineRows,
+} from '../services/tasteEngine';
 import { PopularOnNetflixRow, type CardVariant } from './PopularOnNetflixRow';
 
 interface TailoredRecommendationsRowProps {
@@ -27,18 +28,26 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
   const userRatings = useStreamStore((state) => state.userRatings);
   const isWatched = useStreamStore((state) => state.isWatched);
   const dislikedMedia = useStreamStore((state) => state.dislikedMedia);
+  const watchlist = useStreamStore((state) => state.watchlist);
 
-  const [pipelineData, setPipelineData] = useState<CuratedRecommendationRows>({
+  const [pipelineData, setPipelineData] = useState<TasteEngineRows>({
     topPicks: [],
-    dominantGenres: [],
-    totalCandidatePoolCount: 0,
-    modelTimestamp: 0,
+    thematicRows: [],
+    totalPoolCount: 0,
   });
 
   useEffect(() => {
     let isMounted = true;
 
-    generateFullRecommendationPipeline(watchHistory, likedMedia, userRatings, dislikedMedia, {
+    const profile = buildUserTasteProfile(
+      watchHistory,
+      likedMedia,
+      userRatings,
+      dislikedMedia,
+      watchlist
+    );
+
+    runTasteRecommendationPipeline(profile, {
       preferredType: mediaType,
     })
       .then((res) => {
@@ -53,7 +62,7 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
     return () => {
       isMounted = false;
     };
-  }, [likedMedia, watchHistory, userRatings, dislikedMedia, mediaType]);
+  }, [likedMedia, watchHistory, userRatings, dislikedMedia, watchlist, mediaType]);
 
   const defaultTitle =
     title ||
@@ -64,12 +73,12 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
       : 'Top Picks for You');
 
   const filteredTopPicks = useMemo(() => {
-    return pipelineData.topPicks.filter((p) => !isWatched(p.item.id));
+    return pipelineData.topPicks.filter((item) => !isWatched(item.id));
   }, [pipelineData.topPicks, isWatched]);
 
   const filteredBecauseYouWatched = useMemo(() => {
     if (!pipelineData.becauseYouWatched) return null;
-    const unhit = pipelineData.becauseYouWatched.items.filter((p) => !isWatched(p.item.id));
+    const unhit = pipelineData.becauseYouWatched.items.filter((item) => !isWatched(item.id));
     if (unhit.length === 0) return null;
     return {
       ...pipelineData.becauseYouWatched,
@@ -77,50 +86,45 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
     };
   }, [pipelineData.becauseYouWatched, isWatched]);
 
-  const filteredHiddenGems = useMemo(() => {
-    if (!pipelineData.hiddenGems) return null;
-    const unhit = pipelineData.hiddenGems.items.filter((p) => !isWatched(p.item.id));
-    if (unhit.length === 0) return null;
-    return {
-      ...pipelineData.hiddenGems,
-      items: unhit,
-    };
-  }, [pipelineData.hiddenGems, isWatched]);
-
   return (
     <div className="space-y-6">
       {/* Row 1: Top Picks for You */}
       {filteredTopPicks.length > 0 && (
         <PopularOnNetflixRow
           title={defaultTitle}
-          items={filteredTopPicks.map((p) => p.item)}
+          items={filteredTopPicks}
           onSelect={onSelect}
           onPlay={onPlay}
           variant="backdrop"
         />
       )}
 
-      {/* Row 2: Because You Watched [Title] - Tall Card Variant with Hover Preview */}
+      {/* Row 2: Because You Watched [Title] - Card Variant with Hover Preview */}
       {filteredBecauseYouWatched && (
         <PopularOnNetflixRow
           title={`Because You Watched "${filteredBecauseYouWatched.seedTitle}"`}
-          items={filteredBecauseYouWatched.items.map((p) => p.item)}
+          items={filteredBecauseYouWatched.items}
           onSelect={onSelect}
           onPlay={onPlay}
           variant={cardVariant}
         />
       )}
 
-      {/* Row 3: Hidden Gems */}
-      {filteredHiddenGems && (
-        <PopularOnNetflixRow
-          title={`Hidden Gems in ${filteredHiddenGems.genreName}`}
-          items={filteredHiddenGems.items.map((p) => p.item)}
-          onSelect={onSelect}
-          onPlay={onPlay}
-          variant="backdrop"
-        />
-      )}
+      {/* Row 3: Thematic Rows */}
+      {pipelineData.thematicRows.map((row, idx) => {
+        const unhit = row.items.filter((item) => !isWatched(item.id));
+        if (unhit.length === 0) return null;
+        return (
+          <PopularOnNetflixRow
+            key={`thematic-row-${idx}`}
+            title={row.title}
+            items={unhit}
+            onSelect={onSelect}
+            onPlay={onPlay}
+            variant="backdrop"
+          />
+        );
+      })}
     </div>
   );
 };

@@ -12,6 +12,7 @@ import {
   fetchRecommendations,
 } from '../services/tmdb';
 import { useStreamStore } from '../store/useStreamStore';
+import { calculateUnifiedMatchScore, useUserTasteProfile } from '../services/tasteEngine';
 import {
   X,
   Play,
@@ -49,6 +50,7 @@ export const NetflixDetailModal: React.FC<NetflixDetailModalProps> = ({
   const [similarItems, setSimilarItems] = useState<MediaItem[]>([]);
 
   const seasonDropdownRef = useRef<HTMLDivElement>(null);
+  const tasteProfile = useUserTasteProfile();
 
   const toggleWatchlist = useStreamStore((state) => state.toggleWatchlist);
   const toggleLike = useStreamStore((state) => state.toggleLike);
@@ -172,11 +174,8 @@ export const NetflixDetailModal: React.FC<NetflixDetailModalProps> = ({
     ? new Date(currentMedia.release_date).getFullYear()
     : null;
 
-  const voteAvg = currentMedia.vote_average;
-  const matchPercentage =
-    voteAvg && voteAvg > 0
-      ? Math.min(99, Math.max(50, Math.round(voteAvg * 10)))
-      : null;
+  const matchResult = currentMedia ? calculateUnifiedMatchScore(currentMedia, tasteProfile) : null;
+  const matchPercentage = matchResult ? matchResult.percentage : null;
 
   const maturityRating = currentMedia.certification || null;
 

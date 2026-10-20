@@ -14,6 +14,7 @@ import {
   multiSearchWithTMDB,
 } from '../services/tmdb';
 import { useStreamStore } from '../store/useStreamStore';
+import { calculateUnifiedMatchScore, useUserTasteProfile } from '../services/tasteEngine';
 import { getSavedPlaybackTime } from '../services/playbackStorage';
 import { generateItemSpecificRecommendations } from '../services/recommendationPipeline';
 import { NetflixNavbar } from './NetflixNavbar';
@@ -81,6 +82,7 @@ export const NetflixDetailPage: React.FC = () => {
   const getSeriesLastEpisode = useStreamStore((state) => state.getSeriesLastEpisode);
   const saveSeriesEpisode = useStreamStore((state) => state.saveSeriesEpisode);
   const saveMovieToHistory = useStreamStore((state) => state.saveMovieToHistory);
+  const tasteProfile = useUserTasteProfile();
 
   // Search with debounce using tmdb-ts multi-search
   useEffect(() => {
@@ -333,9 +335,8 @@ export const NetflixDetailPage: React.FC = () => {
   };
   const backdrop = details ? getBackdropUrl(details.backdrop_path || details.poster_path) : '';
   const releaseYear = details?.release_date ? new Date(details.release_date).getFullYear() : null;
-  const voteAvg = details?.vote_average;
-  const matchPercentage =
-    voteAvg && voteAvg > 0 ? Math.min(99, Math.max(50, Math.round(voteAvg * 10))) : null;
+  const matchResult = details ? calculateUnifiedMatchScore(details, tasteProfile) : null;
+  const matchPercentage = matchResult ? matchResult.percentage : null;
   const maturityRating = details?.certification || null;
   const seasonsCount = details?.number_of_seasons;
   const runtime = details?.runtime;

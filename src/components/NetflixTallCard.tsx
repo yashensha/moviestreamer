@@ -11,6 +11,7 @@ import {
   GENRE_MAP,
 } from '../services/tmdb';
 import { useStreamStore } from '../store/useStreamStore';
+import { calculateUnifiedMatchScore, useUserTasteProfile } from '../services/tasteEngine';
 import { Play, Plus, Check, ThumbsUp, ThumbsDown, Trash2, Eye } from 'lucide-react';
 
 export interface NetflixTallCardProps {
@@ -61,6 +62,7 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
     (state.dislikedMedia || []).some((m) => Number(m.id) === Number(item.id))
   );
 
+  const tasteProfile = useUserTasteProfile();
   const isWatched = Boolean(isWatchedCard || isWatchedStore || liked);
 
   const handleMarkWatchedClick = () => {
@@ -129,10 +131,8 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
       : getBackdropUrl(effectiveBackdrop || item.poster_path, 'w780');
 
   const matchScore = useMemo(() => {
-    const raw = item.vote_average ? item.vote_average * 10 + 6 : 94;
-    const clamped = Math.min(99, Math.max(85, Math.round(raw)));
-    return `${clamped}% Match`;
-  }, [item.vote_average]);
+    return calculateUnifiedMatchScore(item, tasteProfile).label;
+  }, [item, tasteProfile]);
 
   const certification = useMemo(() => {
     return (

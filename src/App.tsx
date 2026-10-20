@@ -21,7 +21,7 @@ import { PopularOnNetflixRow } from './components/PopularOnNetflixRow';
 import { useStreamStore } from './store/useStreamStore';
 import { useAuthStore } from './store/useAuthStore';
 import { getSavedPlaybackTime } from './services/playbackStorage';
-import { generateFullRecommendationPipeline } from './services/recommendationPipeline';
+import { buildUserTasteProfile, runTasteRecommendationPipeline } from './services/tasteEngine';
 
 function BrowseView({
   tab,
@@ -47,6 +47,7 @@ function BrowseView({
   const likedMedia = useStreamStore((state) => state.likedMedia) || [];
   const userRatings = useStreamStore((state) => state.userRatings) || [];
   const dislikedMedia = useStreamStore((state) => state.dislikedMedia) || [];
+  const watchlist = useStreamStore((state) => state.watchlist) || [];
   const dismissedHistoryIds = useStreamStore((state) => state.dismissedHistoryIds) || [];
 
   // High Match recommendations based on User Taste DNA algorithm for Hero bottom row
@@ -54,15 +55,15 @@ function BrowseView({
 
   useEffect(() => {
     let isCurrent = true;
-    generateFullRecommendationPipeline(watchHistory, likedMedia, userRatings, dislikedMedia, {
+    const profile = buildUserTasteProfile(watchHistory, likedMedia, userRatings, dislikedMedia, watchlist);
+
+    runTasteRecommendationPipeline(profile, {
       preferredType: tab === 'tv' ? 'tv' : tab === 'movie' ? 'movie' : undefined,
     })
       .then((res) => {
         if (!isCurrent) return;
         if (res.topPicks && res.topPicks.length > 0) {
-          const unhit = res.topPicks
-            .filter((p) => !isWatched(p.item.id))
-            .map((p) => p.item);
+          const unhit = res.topPicks.filter((item) => !isWatched(item.id));
           if (unhit.length > 0) {
             setTasteHighMatch(unhit);
           }
@@ -73,7 +74,7 @@ function BrowseView({
     return () => {
       isCurrent = false;
     };
-  }, [watchHistory, likedMedia, userRatings, dislikedMedia, tab, isWatched]);
+  }, [watchHistory, likedMedia, userRatings, dislikedMedia, watchlist, tab, isWatched]);
 
   // Multi-entity search with debounce using tmdb-ts
   useEffect(() => {
