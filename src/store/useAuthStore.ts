@@ -85,7 +85,7 @@ export const useAuthStore = create<AuthState>()(
             return { success: false, error: msg };
           }
 
-          const { token, user, watchHistory = [], likedMedia = [], ratings = [] } = data;
+          const { token, user, watchHistory = [], likedMedia = [], ratings = [], watchlist = [] } = data;
 
           // Save token & user id in localStorage
           localStorage.setItem('moviewatcher_auth_token', token);
@@ -104,6 +104,7 @@ export const useAuthStore = create<AuthState>()(
             watchHistory,
             likedMedia,
             userRatings: ratings,
+            watchlist,
           });
 
           return { success: true };
@@ -224,19 +225,21 @@ export const useAuthStore = create<AuthState>()(
             const filteredHistory = filterOutDeleted(data.watchHistory);
             const filteredLikes = filterOutDeleted(data.likedMedia);
             const filteredRatings = filterOutDeleted(data.ratings);
+            const filteredWatchlist = data.watchlist || [];
 
             // Load authenticated user's records from DB into client state
             useStreamStore.setState({
               watchHistory: filteredHistory,
               likedMedia: filteredLikes,
               userRatings: filteredRatings,
+              watchlist: filteredWatchlist,
             });
 
             // If remote DB had items that were locally deleted, push sanitized state back immediately
             if (deletedSet.size > 0) {
               import('../services/edgeSync')
                 .then((m) => {
-                  m.syncToEdgeImmediately(filteredHistory, filteredLikes, filteredRatings);
+                  m.syncToEdgeImmediately(filteredHistory, filteredLikes, filteredRatings, filteredWatchlist);
                 })
                 .catch(() => {});
             }

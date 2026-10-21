@@ -36,7 +36,8 @@ let syncTimeout: any = null;
 export const syncToEdge = (
   watchHistory: WatchHistoryItem[],
   likedMedia: MediaItem[],
-  userRatings: any[] = []
+  userRatings: any[] = [],
+  watchlist: MediaItem[] = []
 ) => {
   if (typeof window === 'undefined') return;
 
@@ -63,6 +64,7 @@ export const syncToEdge = (
           watchHistory,
           likedMedia,
           userRatings,
+          watchlist,
         }),
       });
     } catch {
@@ -77,7 +79,8 @@ export const syncToEdge = (
 export const syncToEdgeImmediately = async (
   watchHistory: WatchHistoryItem[],
   likedMedia: MediaItem[],
-  userRatings: any[] = []
+  userRatings: any[] = [],
+  watchlist: MediaItem[] = []
 ): Promise<void> => {
   if (typeof window === 'undefined') return;
 
@@ -104,6 +107,7 @@ export const syncToEdgeImmediately = async (
         watchHistory,
         likedMedia,
         userRatings,
+        watchlist,
       }),
     });
   } catch {
@@ -118,7 +122,8 @@ export const syncToEdgeImmediately = async (
 export const syncOnExit = (
   watchHistory: WatchHistoryItem[],
   likedMedia: MediaItem[],
-  userRatings: any[] = []
+  userRatings: any[] = [],
+  watchlist: MediaItem[] = []
 ): void => {
   if (typeof window === 'undefined') return;
 
@@ -135,6 +140,7 @@ export const syncOnExit = (
       watchHistory,
       likedMedia,
       userRatings,
+      watchlist,
     });
 
     if (navigator.sendBeacon) {
@@ -190,6 +196,6 @@ export const initEdgeSync = () => {
 
   // Subscribe to reactive store changes
   useStreamStore.subscribe((state) => {
-    syncToEdge(state.watchHistory, state.likedMedia, state.userRatings);
+    syncToEdge(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
   });
 };

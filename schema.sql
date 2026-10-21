@@ -98,3 +98,81 @@ CREATE TABLE IF NOT EXISTS user_ratings (
 );
 CREATE INDEX IF NOT EXISTS idx_user_ratings_user ON user_ratings(user_id, rated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_ratings_media ON user_ratings(media_id, rating);
+
+-- 6. User Saved Watchlist
+CREATE TABLE IF NOT EXISTS user_watchlist (
+  id TEXT PRIMARY KEY, -- format: {user_id}:{media_type}:{media_id}
+  user_id TEXT NOT NULL,
+  media_id INTEGER NOT NULL,
+  media_type TEXT NOT NULL DEFAULT 'movie',
+  title TEXT NOT NULL,
+  overview TEXT,
+  poster_path TEXT,
+  backdrop_path TEXT,
+  release_date TEXT,
+  vote_average REAL,
+  genre_ids TEXT, -- JSON array of genre IDs: [28, 12, 878]
+  number_of_seasons INTEGER,
+  added_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_user_watchlist_user ON user_watchlist(user_id, added_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_watchlist_media ON user_watchlist(media_id);
+
+-- ==============================================================================
+-- 7. Letterboxd Thematic Taxonomy & Micro-Genres (Normalized Tables)
+-- ==============================================================================
+
+-- 7. Themes table (Macro-categories: ~109 unique themes)
+CREATE TABLE IF NOT EXISTS themes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_themes_name ON themes(name);
+
+-- 8. Nanogenres table (Micro-genre vibe triplets)
+CREATE TABLE IF NOT EXISTS nanogenres (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_nanogenres_name ON nanogenres(name);
+
+-- 9. Movie Themes Junction Table
+CREATE TABLE IF NOT EXISTS movie_themes (
+  movie_id INTEGER NOT NULL,
+  theme_id INTEGER NOT NULL,
+  PRIMARY KEY (movie_id, theme_id),
+  FOREIGN KEY (theme_id) REFERENCES themes(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_movie_themes_theme ON movie_themes(theme_id);
+CREATE INDEX IF NOT EXISTS idx_movie_themes_movie ON movie_themes(movie_id);
+
+-- 10. Movie Nanogenres Junction Table
+CREATE TABLE IF NOT EXISTS movie_nanogenres (
+  movie_id INTEGER NOT NULL,
+  nanogenre_id INTEGER NOT NULL,
+  PRIMARY KEY (movie_id, nanogenre_id),
+  FOREIGN KEY (nanogenre_id) REFERENCES nanogenres(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_movie_nanogenres_nano ON movie_nanogenres(nanogenre_id);
+CREATE INDEX IF NOT EXISTS idx_movie_nanogenres_movie ON movie_nanogenres(movie_id);
+
+-- 11. TV Themes Junction Table
+CREATE TABLE IF NOT EXISTS tv_themes (
+  tv_id INTEGER NOT NULL,
+  theme_id INTEGER NOT NULL,
+  PRIMARY KEY (tv_id, theme_id),
+  FOREIGN KEY (theme_id) REFERENCES themes(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_tv_themes_theme ON tv_themes(theme_id);
+CREATE INDEX IF NOT EXISTS idx_tv_themes_tv ON tv_themes(tv_id);
+
+-- 12. TV Nanogenres Junction Table
+CREATE TABLE IF NOT EXISTS tv_nanogenres (
+  tv_id INTEGER NOT NULL,
+  nanogenre_id INTEGER NOT NULL,
+  PRIMARY KEY (tv_id, nanogenre_id),
+  FOREIGN KEY (nanogenre_id) REFERENCES nanogenres(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_tv_nanogenres_nano ON tv_nanogenres(nanogenre_id);
+CREATE INDEX IF NOT EXISTS idx_tv_nanogenres_tv ON tv_nanogenres(tv_id);

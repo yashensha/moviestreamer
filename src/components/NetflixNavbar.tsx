@@ -32,6 +32,8 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
   const currentTab =
     location.pathname.startsWith('/my-list')
       ? 'watchlist'
+      : location.pathname.startsWith('/top-rated')
+      ? 'top-rated'
       : location.pathname.startsWith('/profile') || location.pathname.startsWith('/history')
       ? 'profile'
       : location.pathname.startsWith('/tv') || location.pathname.startsWith('/series')
@@ -160,6 +162,16 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
               className="text-zinc-300 hover:text-zinc-400 transition cursor-pointer"
             >
               New & Popular
+            </button>
+            <button
+              onClick={() => handleNav('top-rated' as any, '/top-rated')}
+              className={`transition cursor-pointer ${
+                currentTab === 'top-rated' && !searchQuery
+                  ? 'text-white font-bold cursor-default'
+                  : 'text-zinc-300 hover:text-zinc-400'
+              }`}
+            >
+              Top Rated
             </button>
             <button
               onClick={() => handleNav('watchlist', '/my-list')}

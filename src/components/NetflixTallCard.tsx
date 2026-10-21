@@ -41,6 +41,7 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
   isWatchlistCard,
   onMarkWatched,
   onRemove,
+  badge,
 }) => {
   const navigate = useNavigate();
 
@@ -195,6 +196,13 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
           loading="lazy"
           className="w-full h-full object-cover rounded-none brightness-[0.92] group-hover/card:brightness-105 transition-all duration-500"
         />
+
+        {/* Optional Custom Badge Overlay (e.g., Rank badge) */}
+        {badge && (
+          <div className="absolute top-2 left-2 z-20 pointer-events-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]">
+            {badge}
+          </div>
+        )}
 
         {/* Unhovered Bottom PNG Title Logo or Typography */}
         <div className="absolute inset-x-0 bottom-0 pt-16 pb-3 px-3 bg-gradient-to-t from-black/95 via-black/60 to-transparent group-hover/card:opacity-0 transition-opacity duration-200 pointer-events-none flex flex-col items-center justify-end text-center">

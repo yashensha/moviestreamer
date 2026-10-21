@@ -167,6 +167,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
 
   // Modals & Drag-and-Drop
   const [isLetterboxdOpen, setIsLetterboxdOpen] = useState(false);
+  const [letterboxdModalMode, setLetterboxdModalMode] = useState<'ratings' | 'watchlist'>('ratings');
   const [isAddWatchedOpen, setIsAddWatchedOpen] = useState(false);
   const [isPageDragActive, setIsPageDragActive] = useState(false);
   const [droppedFile, setDroppedFile] = useState<File | null>(null);
@@ -192,6 +193,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
       const f = e.dataTransfer.files[0];
       if (f.name.endsWith('.csv')) {
         setDroppedFile(f);
+        if (f.name.toLowerCase().includes('watchlist') || activeTab === 'watchlist') {
+          setLetterboxdModalMode('watchlist');
+        } else {
+          setLetterboxdModalMode('ratings');
+        }
         setIsLetterboxdOpen(true);
       }
     }
@@ -577,7 +583,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
               <div className="flex flex-wrap items-center gap-2.5">
                 {/* Letterboxd Import Action Button */}
                 <button
-                  onClick={() => setIsLetterboxdOpen(true)}
+                  onClick={() => {
+                    setLetterboxdModalMode('ratings');
+                    setIsLetterboxdOpen(true);
+                  }}
                   className="inline-flex items-center gap-2 px-3.5 py-2 bg-[#00E054]/15 hover:bg-[#00E054]/25 border border-[#00E054]/50 text-[#00E054] text-xs font-bold transition cursor-pointer shadow-lg shadow-[#00E054]/10"
                 >
                   <UploadCloud className="w-4 h-4" />
@@ -635,7 +644,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
                 </div>
               </div>
               <button
-                onClick={() => setIsLetterboxdOpen(true)}
+                onClick={() => {
+                  setLetterboxdModalMode('ratings');
+                  setIsLetterboxdOpen(true);
+                }}
                 className="px-4 py-2 bg-[#00E054] hover:bg-[#00c046] text-black text-xs font-black uppercase tracking-wider transition cursor-pointer flex-shrink-0"
               >
                 Import CSV Now
@@ -753,7 +765,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
                   </div>
                   <div className="flex gap-2 justify-center pt-2">
                     <button
-                      onClick={() => setIsLetterboxdOpen(true)}
+                      onClick={() => {
+                        setLetterboxdModalMode('ratings');
+                        setIsLetterboxdOpen(true);
+                      }}
                       className="px-3.5 py-1.5 bg-[#00E054]/20 border border-[#00E054]/40 text-[#00E054] text-xs font-bold transition cursor-pointer"
                     >
                       Import Letterboxd
@@ -796,12 +811,26 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
           {/* Section: Saved Watchlist */}
           {(activeTab === 'all' || activeTab === 'watchlist') && (
             <section className="space-y-4 ">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 ">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-bold text-white">Saved Watchlist</h2>
+                  <span className="text-xs px-2 py-0.5 bg-zinc-800 text-zinc-400 font-bold">
+                    {watchlist.length}
+                  </span>
                 </div>
 
-              
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setLetterboxdModalMode('watchlist');
+                      setIsLetterboxdOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-xs font-semibold transition cursor-pointer"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5 text-[#00E054]" />
+                    <span>Import Letterboxd Watchlist</span>
+                  </button>
+                </div>
               </div>
 
               {filteredWatchlistItems.length === 0 ? (
@@ -815,18 +844,30 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
                     </p>
                     <p className="text-xs text-zinc-500 max-w-sm mx-auto">
                       {watchlist.length === 0
-                        ? 'Click the bookmark icon on any card or detail page to save titles you plan to stream next.'
+                        ? 'Click the bookmark icon on any card or detail page, or import your Letterboxd watchlist.csv.'
                         : 'Try switching the filter to "All" to view all saved titles.'}
                     </p>
                   </div>
                   {watchlist.length === 0 && (
-                    <button
-                      onClick={() => navigate('/')}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-[#E50914] hover:bg-[#c90812] text-white text-xs font-bold transition cursor-pointer shadow-lg shadow-rose-950/40"
-                    >
-                      <Compass className="w-4 h-4" />
-                      <span>Explore Trending Titles</span>
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                      <button
+                        onClick={() => {
+                          setLetterboxdModalMode('watchlist');
+                          setIsLetterboxdOpen(true);
+                        }}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-500 text-white text-xs font-bold transition cursor-pointer"
+                      >
+                        <UploadCloud className="w-4 h-4 text-[#00E054]" />
+                        <span>Import Letterboxd Watchlist</span>
+                      </button>
+                      <button
+                        onClick={() => navigate('/')}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#E50914] hover:bg-[#c90812] text-white text-xs font-bold transition cursor-pointer shadow-lg shadow-rose-950/40"
+                      >
+                        <Compass className="w-4 h-4" />
+                        <span>Explore Trending Titles</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               ) : (
@@ -1683,6 +1724,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenItem, initialTab
           setDroppedFile(null);
         }}
         initialFile={droppedFile}
+        initialMode={letterboxdModalMode}
       />
 
       {/* Manual Add Watched Modal */}

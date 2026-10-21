@@ -52,3 +52,8 @@ Thumbs.db
 .vite/
 .turbo/
 coverage/
+
+# Scraper profile & browser cache
+.browser_profile/
+scripts/.browser_profile/
+scripts/sample_genres_page.html

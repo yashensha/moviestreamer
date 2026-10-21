@@ -18,6 +18,14 @@ import { ProfilePage } from './components/ProfilePage';
 import { AuthModal } from './components/AuthModal';
 import { ContinueWatchingRow } from './components/ContinueWatchingRow';
 import { PopularOnNetflixRow } from './components/PopularOnNetflixRow';
+import { TopRatedPage } from './components/TopRatedPage';
+import { letterboxdTop500List, imdbTop200SeriesList } from './services/topRatedLists';
+import {
+  LetterboxdIcon,
+  ImdbIcon,
+  LetterboxdRankBadge,
+  ImdbRankBadge,
+} from './components/PrestigeBadges';
 import { useStreamStore } from './store/useStreamStore';
 import { useAuthStore } from './store/useAuthStore';
 import { getSavedPlaybackTime } from './services/playbackStorage';
@@ -38,6 +46,7 @@ function BrowseView({
   onOpenItem: (item: MediaItem) => void;
   onPlayHero: (item: MediaItem, season?: number, episode?: number) => void;
 }) {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<MediaItem[]>([]);
   const [searchPeople, setSearchPeople] = useState<PersonItem[]>([]);
@@ -235,6 +244,36 @@ function BrowseView({
                   : 'Top Picks for You'
               }
             />
+
+            {/* Letterboxd Official Top 500 (Shown on Movies & Home as Tall Portrait Cards) */}
+            {(tab === 'home' || tab === 'movie') && (
+              <PopularOnNetflixRow
+                title="Letterboxd Official Top 500"
+                items={letterboxdTop500List.slice(0, 30)}
+                variant="tall"
+                imageType="backdrop"
+                onSelect={onOpenItem}
+                onPlay={onPlayHero}
+                onTitleClick={() => navigate('/top-rated?tab=letterboxd')}
+                badgeRenderer={(item: any) => <LetterboxdRankBadge rank={item.rank} />}
+              />
+            )}
+
+            {/* IMDb Top 200 TV Series (Shown on TV Shows & Home as Tall Portrait Cards) */}
+            {(tab === 'home' || tab === 'tv') && (
+              <PopularOnNetflixRow
+                title="IMDb Top 200 TV Series of All Time"
+                items={imdbTop200SeriesList.slice(0, 30)}
+                variant="tall"
+                imageType="backdrop"
+                onSelect={onOpenItem}
+                onPlay={onPlayHero}
+                onTitleClick={() => navigate('/top-rated?tab=imdb')}
+                badgeRenderer={(item: any) => (
+                  <ImdbRankBadge rank={item.rank} rating={item.imdb_rating || item.vote_average} />
+                )}
+              />
+            )}
 
             {/* Trending Now */}
             {(tab === 'home' || tab === 'movie') && (
@@ -485,6 +524,10 @@ export function App() {
               onPlayHero={handlePlayHero}
             />
           }
+        />
+        <Route
+          path="/top-rated"
+          element={<TopRatedPage onOpenItem={handleOpenItem} onPlay={handlePlayHero} />}
         />
         <Route
           path="/my-list"

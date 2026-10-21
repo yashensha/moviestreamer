@@ -1,0 +1,87 @@
+{
+  "2": {
+    "slug": "ariel",
+    "genres": [
+      "Drama",
+      "Romance",
+      "Crime"
+    ],
+    "themes": [],
+    "nanogenres": []
+  },
+  "3": {
+    "slug": "shadows-in-paradise",
+    "genres": [
+      "Drama",
+      "Romance"
+    ],
+    "themes": [],
+    "nanogenres": []
+  },
+  "5": {
+    "slug": "four-rooms",
+    "genres": [
+      "Comedy"
+    ],
+    "themes": [
+      "Crude Humor And Satire"
+    ],
+    "nanogenres": [],
+    "minigenres": []
+  },
+  "6": {
+    "slug": "judgment-night",
+    "genres": [
+      "Action",
+      "Crime",
+      "Drama",
+      "Thriller"
+    ],
+    "themes": [
+      "Crime, Drugs And Gangsters"
+    ],
+    "nanogenres": [],
+    "minigenres": []
+  },
+  "11": {
+    "slug": "star-wars",
+    "genres": [
+      "Adventure",
+      "Science Fiction",
+      "Action"
+    ],
+    "themes": [
+      "Epic Heroes",
+      "Monsters, Aliens, Sci-Fi And The Apocalypse",
+      "Humanity And The World Around Us"
+    ],
+    "nanogenres": []
+  },
+  "12": {
+    "slug": "finding-nemo",
+    "genres": [
+      "Adventure",
+      "Family",
+      "Animation",
+      "here"
+    ],
+    "themes": [
+      "Crude Humor And Satire",
+      "Moving Relationship Stories"
+    ],
+    "nanogenres": []
+  },
+  "13": {
+    "slug": "forrest-gump",
+    "genres": [
+      "Drama",
+      "Romance",
+      "Comedy"
+    ],
+    "themes": [
+      "Moving Relationship Stories",
+      "Humanity And The World Around Us"
+    ],
+    "nanogenres": []
+  }
+}

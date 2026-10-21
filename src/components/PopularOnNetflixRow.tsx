@@ -12,6 +12,10 @@ interface PopularOnNetflixRowProps {
   onPlay?: (item: MediaItem) => void;
   variant?: CardVariant;
   className?: string;
+  imageType?: 'backdrop' | 'poster';
+  badgeRenderer?: (item: MediaItem, index: number) => React.ReactNode;
+  onTitleClick?: () => void;
+  titleIcon?: React.ReactNode;
 }
 
 export const PopularOnNetflixRow: React.FC<PopularOnNetflixRowProps> = ({
@@ -21,6 +25,10 @@ export const PopularOnNetflixRow: React.FC<PopularOnNetflixRowProps> = ({
   onPlay,
   variant = 'backdrop',
   className = '',
+  imageType,
+  badgeRenderer,
+  onTitleClick,
+  titleIcon,
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -28,8 +36,14 @@ export const PopularOnNetflixRow: React.FC<PopularOnNetflixRowProps> = ({
 
   return (
     <div className={`space-y-1.5 md:space-y-2 px-4 md:px-12 ${className}`}>
-      {/* Row Header matching Image 2 */}
-      <h2 className="text-base sm:text-lg md:text-xl font-bold text-white tracking-tight hover:text-zinc-300 transition cursor-pointer inline-flex items-center gap-1.5 group/header">
+      {/* Row Header */}
+      <h2
+        onClick={onTitleClick}
+        className={`text-base sm:text-lg md:text-xl font-bold text-white tracking-tight hover:text-zinc-300 transition inline-flex items-center gap-2 group/header ${
+          onTitleClick ? 'cursor-pointer' : ''
+        }`}
+      >
+        {titleIcon && <span className="inline-flex items-center shrink-0">{titleIcon}</span>}
         <span>{title}</span>
         <span className="text-sm text-cyan-400 opacity-0 group-hover/header:opacity-100 transition-opacity">
           &gt;
@@ -51,8 +65,10 @@ export const PopularOnNetflixRow: React.FC<PopularOnNetflixRowProps> = ({
               <NetflixTallCard
                 key={`${item.id}-${index}`}
                 item={item}
+                imageType={imageType ?? 'poster'}
                 onSelect={onSelect}
                 onPlay={onPlay}
+                badge={badgeRenderer ? badgeRenderer(item, index) : undefined}
               />
             ) : (
               <NetflixBackdropCard

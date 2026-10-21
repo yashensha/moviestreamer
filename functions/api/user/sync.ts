@@ -30,9 +30,10 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       watchHistory?: any[];
       likedMedia?: any[];
       userRatings?: any[];
+      watchlist?: any[];
     };
 
-    const { userId, watchHistory = [], likedMedia = [], userRatings = [] } = body;
+    const { userId, watchHistory = [], likedMedia = [], userRatings = [], watchlist } = body;
 
     let targetUserId = userId;
     const authHeader = request.headers.get('Authorization') || '';
@@ -55,6 +56,26 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     }
 
     const now = Date.now();
+
+    // Ensure user_watchlist table exists
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS user_watchlist (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        media_id INTEGER NOT NULL,
+        media_type TEXT NOT NULL DEFAULT 'movie',
+        title TEXT NOT NULL,
+        overview TEXT,
+        poster_path TEXT,
+        backdrop_path TEXT,
+        release_date TEXT,
+        vote_average REAL,
+        genre_ids TEXT,
+        number_of_seasons INTEGER,
+        added_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );`
+    ).run();
 
     // 1. Ensure user exists
     await db.prepare(
@@ -110,6 +131,59 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
         item.durationSeconds || 0,
         item.updatedAt || now
       ).run();
+    }
+
+    // 3b. Persist Watchlist in D1 if provided
+    if (Array.isArray(watchlist)) {
+      const activeIds = watchlist.map((w: any) => Number(w.id)).filter(Boolean);
+      if (activeIds.length > 0) {
+        // Delete items from user_watchlist that were removed by the user
+        const placeholders = activeIds.map(() => '?').join(',');
+        await db.prepare(
+          `DELETE FROM user_watchlist WHERE user_id = ? AND media_id NOT IN (${placeholders})`
+        ).bind(targetUserId, ...activeIds).run();
+      } else {
+        await db.prepare('DELETE FROM user_watchlist WHERE user_id = ?').bind(targetUserId).run();
+      }
+
+      for (const item of watchlist) {
+        const mediaId = Number(item.id);
+        if (!mediaId) continue;
+        const mediaType = item.media_type || 'movie';
+        const recordId = `${targetUserId}:${mediaType}:${mediaId}`;
+        const gids = item.genre_ids || (item.genres ? item.genres.map((g: any) => g.id) : []);
+
+        await db.prepare(
+          `INSERT INTO user_watchlist (
+            id, user_id, media_id, media_type, title, overview,
+            poster_path, backdrop_path, release_date, vote_average,
+            genre_ids, number_of_seasons, added_at
+          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+          ON CONFLICT(id) DO UPDATE SET
+            title = ?5,
+            overview = ?6,
+            poster_path = ?7,
+            backdrop_path = ?8,
+            release_date = ?9,
+            vote_average = ?10,
+            genre_ids = ?11,
+            added_at = ?13`
+        ).bind(
+          recordId,
+          targetUserId,
+          mediaId,
+          mediaType,
+          item.title || 'Untitled',
+          item.overview || '',
+          item.poster_path || null,
+          item.backdrop_path || null,
+          item.release_date || '',
+          item.vote_average || 8.0,
+          JSON.stringify(gids),
+          item.number_of_seasons || 1,
+          item.added_at || now
+        ).run();
+      }
     }
 
     // 4. Compute Unified Interaction Matrix & Weighting Formula

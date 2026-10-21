@@ -9,7 +9,8 @@ import {
   Star,
   Sparkles,
   ArrowRight,
-  Film
+  Film,
+  Bookmark,
 } from 'lucide-react';
 import {
   parseLetterboxdCSV,
@@ -25,6 +26,7 @@ interface LetterboxdImportModalProps {
   onClose: () => void;
   onImportComplete?: (result: BatchImportResult) => void;
   initialFile?: File | null;
+  initialMode?: 'ratings' | 'watchlist';
 }
 
 export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
@@ -32,13 +34,16 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
   onClose,
   onImportComplete,
   initialFile,
+  initialMode = 'ratings',
 }) => {
   const bulkAddRatings = useStreamStore((state) => state.bulkAddRatings);
+  const bulkAddToWatchlist = useStreamStore((state) => state.bulkAddToWatchlist);
 
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [parsedEntries, setParsedEntries] = useState<LetterboxdRawEntry[]>([]);
   const [detectedType, setDetectedType] = useState<string>('');
+  const [importTarget, setImportTarget] = useState<'ratings' | 'watchlist'>(initialMode);
   const [error, setError] = useState<string | null>(null);
 
   // Resolution state
@@ -47,6 +52,12 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
   const [importResult, setImportResult] = useState<BatchImportResult | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setImportTarget(initialMode);
+    }
+  }, [isOpen, initialMode]);
 
   React.useEffect(() => {
     if (initialFile && isOpen) {
@@ -85,6 +96,9 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
 
       setParsedEntries(entries);
       setDetectedType(type);
+      if (type === 'watchlist') {
+        setImportTarget('watchlist');
+      }
     } catch (err: any) {
       setError(err?.message || 'Failed to read CSV file.');
     }
@@ -116,7 +130,11 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
       });
 
       // Save into Zustand store & Cloudflare D1 / dev database
-      bulkAddRatings(result.ratings, true);
+      if (importTarget === 'watchlist') {
+        bulkAddToWatchlist(result.matchedMedia);
+      } else {
+        bulkAddRatings(result.ratings, true);
+      }
 
       setImportResult(result);
       if (onImportComplete) {
@@ -167,20 +185,30 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
         {/* Top Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-black">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-none bg-[#00E054]/15 border border-[#00E054]/40 flex items-center justify-center text-[#00E054]">
-              <Film className="w-4 h-4" />
+            <div className={`w-8 h-8 rounded-none flex items-center justify-center border ${
+              importTarget === 'watchlist'
+                ? 'bg-[#E50914]/15 border-[#E50914]/40 text-[#E50914]'
+                : 'bg-[#00E054]/15 border-[#00E054]/40 text-[#00E054]'
+            }`}>
+              {importTarget === 'watchlist' ? <Bookmark className="w-4 h-4" /> : <Film className="w-4 h-4" />}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black text-white tracking-wide">
-                  Letterboxd Taste Matrix Importer
+                  {importTarget === 'watchlist' ? 'Letterboxd Watchlist Importer' : 'Letterboxd Taste Matrix Importer'}
                 </h3>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 uppercase tracking-wider bg-[#00E054]/20 text-[#00E054] border border-[#00E054]/30">
-                  Step 1
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 uppercase tracking-wider border ${
+                  importTarget === 'watchlist'
+                    ? 'bg-[#E50914]/20 text-[#E50914] border-[#E50914]/30'
+                    : 'bg-[#00E054]/20 text-[#00E054] border-[#00E054]/30'
+                }`}>
+                  {importTarget === 'watchlist' ? 'Watchlist' : 'Taste Matrix'}
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
-                Instantly map your Letterboxd ratings & watched history to TMDB IDs
+                {importTarget === 'watchlist'
+                  ? 'Import your Letterboxd watchlist and map titles directly to streamable TMDB movies'
+                  : 'Instantly map your Letterboxd ratings & watched history to TMDB IDs'}
               </p>
             </div>
           </div>
@@ -206,14 +234,22 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
           {/* State 1: Success Complete Screen */}
           {importResult ? (
             <div className="space-y-6 py-2 text-center">
-              <div className="w-16 h-16 bg-[#00E054]/15 border border-[#00E054]/50 rounded-none mx-auto flex items-center justify-center text-[#00E054] shadow-lg shadow-[#00E054]/10">
+              <div className={`w-16 h-16 rounded-none mx-auto flex items-center justify-center shadow-lg ${
+                importTarget === 'watchlist'
+                  ? 'bg-[#E50914]/15 border border-[#E50914]/50 text-[#E50914] shadow-[#E50914]/10'
+                  : 'bg-[#00E054]/15 border border-[#00E054]/50 text-[#00E054] shadow-[#00E054]/10'
+              }`}>
                 <CheckCircle2 className="w-9 h-9" />
               </div>
 
               <div className="space-y-1">
-                <h4 className="text-xl font-bold text-white">Import Complete!</h4>
+                <h4 className="text-xl font-bold text-white">
+                  {importTarget === 'watchlist' ? 'Watchlist Imported Successfully!' : 'Import Complete!'}
+                </h4>
                 <p className="text-xs sm:text-sm text-zinc-400 max-w-md mx-auto">
-                  Your Letterboxd taste data has been mapped with TMDB identifiers and saved to your profile and taste matrix.
+                  {importTarget === 'watchlist'
+                    ? 'Your Letterboxd watchlist titles have been matched on TMDB and saved to your personal Watchlist.'
+                    : 'Your Letterboxd taste data has been mapped with TMDB identifiers and saved to your profile and taste matrix.'}
                 </p>
               </div>
 
@@ -222,21 +258,33 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
                 <div className="bg-zinc-900 border border-zinc-800 p-3.5 space-y-1">
                   <span className="text-[10px] uppercase font-bold text-zinc-500">Total Matched</span>
                   <div className="text-xl font-black text-white">
-                    {importResult.ratings.length}
+                    {importTarget === 'watchlist' ? importResult.matchedMedia.length : importResult.ratings.length}
                   </div>
-                  <span className="text-[11px] text-[#00E054]">Added to Watched</span>
+                  <span className={`text-[11px] ${importTarget === 'watchlist' ? 'text-[#E50914]' : 'text-[#00E054]'}`}>
+                    {importTarget === 'watchlist' ? 'Added to Watchlist' : 'Added to Watched'}
+                  </span>
                 </div>
                 <div className="bg-zinc-900 border border-zinc-800 p-3.5 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-zinc-500">Taste Seeds</span>
+                  <span className="text-[10px] uppercase font-bold text-zinc-500">
+                    {importTarget === 'watchlist' ? 'High Rated' : 'Taste Seeds'}
+                  </span>
                   <div className="text-xl font-black text-rose-500">
-                    {importResult.ratings.filter((r) => r.confidenceWeight >= 4.0).length}
+                    {importTarget === 'watchlist'
+                      ? importResult.matchedMedia.filter((m) => (m.vote_average || 0) >= 7.5).length
+                      : importResult.ratings.filter((r) => r.confidenceWeight >= 4.0).length}
                   </div>
-                  <span className="text-[11px] text-zinc-400">4★+ Favorites</span>
+                  <span className="text-[11px] text-zinc-400">
+                    {importTarget === 'watchlist' ? '7.5★+ Top Picks' : '4★+ Favorites'}
+                  </span>
                 </div>
                 <div className="bg-zinc-900 border border-zinc-800 p-3.5 space-y-1">
                   <span className="text-[10px] uppercase font-bold text-zinc-500">TMDB Mapped</span>
                   <div className="text-xl font-black text-emerald-400">
-                    {Math.round((importResult.ratings.length / Math.max(importResult.totalParsed, 1)) * 100)}%
+                    {Math.round(
+                      ((importTarget === 'watchlist' ? importResult.matchedMedia.length : importResult.ratings.length) /
+                        Math.max(importResult.totalParsed, 1)) *
+                        100
+                    )}%
                   </div>
                   <span className="text-[11px] text-zinc-400">Precision Match</span>
                 </div>
@@ -264,7 +312,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
                   onClick={onClose}
                   className="px-6 py-2.5 bg-[#E50914] hover:bg-[#c90812] text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer"
                 >
-                  View in My Profile
+                  {importTarget === 'watchlist' ? 'View in My Watchlist' : 'View in My Profile'}
                 </button>
                 <button
                   onClick={handleReset}
@@ -278,7 +326,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
             /* State 2: Processing / Mapping Screen */
             <div className="space-y-6 py-6 text-center">
               <div className="relative w-16 h-16 mx-auto flex items-center justify-center">
-                <Loader2 className="w-12 h-12 text-[#00E054] animate-spin" />
+                <Loader2 className={`w-12 h-12 animate-spin ${importTarget === 'watchlist' ? 'text-[#E50914]' : 'text-[#00E054]'}`} />
                 <Sparkles className="w-5 h-5 text-white absolute" />
               </div>
 
@@ -287,7 +335,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
                   Mapping Letterboxd Titles to TMDB IDs...
                 </h4>
                 <p className="text-xs text-zinc-400">
-                  Querying TMDB movie database with in-memory caching and generating recommendation weights.
+                  Querying TMDB movie database with in-memory caching and generating stream links.
                 </p>
               </div>
 
@@ -295,7 +343,11 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
               <div className="space-y-2 max-w-md mx-auto">
                 <div className="h-2.5 w-full bg-zinc-900 border border-zinc-800 overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-emerald-500 to-[#00E054] transition-all duration-200"
+                    className={`h-full transition-all duration-200 ${
+                      importTarget === 'watchlist'
+                        ? 'bg-gradient-to-r from-red-600 to-[#E50914]'
+                        : 'bg-gradient-to-r from-emerald-500 to-[#00E054]'
+                    }`}
                     style={{ width: `${progressPercent}%` }}
                   />
                 </div>
@@ -303,7 +355,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
                   <span className="truncate max-w-[240px] text-zinc-300 font-mono text-[11px]">
                     {progress?.currentTitle ? `“${progress.currentTitle}”` : 'Resolving titles...'}
                   </span>
-                  <span className="font-bold text-[#00E054] font-mono">
+                  <span className={`font-bold font-mono ${importTarget === 'watchlist' ? 'text-[#E50914]' : 'text-[#00E054]'}`}>
                     {progress?.processed || 0} / {progress?.total || parsedEntries.length} ({progressPercent}%)
                   </span>
                 </div>
@@ -314,12 +366,14 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
             <div className="space-y-5">
               <div className="bg-zinc-900 border border-zinc-800 p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <FileText className="w-8 h-8 text-[#00E054]" />
+                  <FileText className={`w-8 h-8 ${importTarget === 'watchlist' ? 'text-[#E50914]' : 'text-[#00E054]'}`} />
                   <div>
                     <h4 className="text-sm font-bold text-white">{file?.name}</h4>
                     <p className="text-xs text-zinc-400">
                       Detected as <strong className="text-white uppercase">{detectedType}</strong> export •{' '}
-                      <span className="text-[#00E054] font-semibold">{parsedEntries.length} films ready</span>
+                      <span className={importTarget === 'watchlist' ? 'text-[#E50914] font-semibold' : 'text-[#00E054] font-semibold'}>
+                        {parsedEntries.length} films ready
+                      </span>
                     </p>
                   </div>
                 </div>
@@ -331,10 +385,41 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
                 </button>
               </div>
 
+              {/* Import Target Selector */}
+              <div className="flex items-center gap-2 bg-zinc-950 p-2 border border-zinc-800">
+                <span className="text-xs font-bold text-zinc-400 px-2 uppercase tracking-wide text-[10px]">Import Destination:</span>
+                <div className="flex gap-2 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => setImportTarget('watchlist')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-bold transition cursor-pointer border ${
+                      importTarget === 'watchlist'
+                        ? 'bg-[#E50914] text-white border-[#E50914]'
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white hover:bg-zinc-800'
+                    }`}
+                  >
+                    <Bookmark className="w-3.5 h-3.5" />
+                    <span>Save to Watchlist</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImportTarget('ratings')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-bold transition cursor-pointer border ${
+                      importTarget === 'ratings'
+                        ? 'bg-[#00E054] text-black border-[#00E054]'
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white hover:bg-zinc-800'
+                    }`}
+                  >
+                    <Film className="w-3.5 h-3.5" />
+                    <span>Save as Watched & Taste Matrix</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <div className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center justify-between">
                   <span>Preview ({Math.min(parsedEntries.length, 5)} of {parsedEntries.length})</span>
-                  <span className="text-[11px] text-zinc-500 font-normal">Title • Year • Rating</span>
+                  <span className="text-[11px] text-zinc-500 font-normal">Title • Year • Letterboxd Info</span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-800 divide-y divide-zinc-900 max-h-48 overflow-y-auto">
                   {parsedEntries.slice(0, 10).map((entry, idx) => (
@@ -346,6 +431,10 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
                       <div className="flex-shrink-0">
                         {entry.rating ? (
                           renderStars(entry.rating)
+                        ) : entry.isWatchlist || importTarget === 'watchlist' ? (
+                          <span className="text-[10px] text-rose-400 uppercase font-semibold flex items-center gap-1">
+                            <Bookmark className="w-3 h-3" /> Watchlist
+                          </span>
                         ) : (
                           <span className="text-[10px] text-zinc-500 uppercase font-semibold">Watched</span>
                         )}
@@ -355,14 +444,25 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
                 </div>
               </div>
 
-              <div className="bg-zinc-900/40 border border-zinc-800/80 p-3 text-xs text-zinc-400 space-y-1">
-                <span className="font-semibold text-zinc-300">How this seeds your taste matrix:</span>
-                <ul className="list-disc list-inside space-y-0.5 text-zinc-400 text-[11px]">
-                  <li>All matched films are added to your Profile's <strong>Watched Titles</strong> list.</li>
-                  <li>Films rated <strong>4★ and above</strong> are automatically added to your <strong>Favorites</strong>.</li>
-                  <li>Confidence weights (0.5 to 5.0) are calculated to train hybrid recommendations.</li>
-                </ul>
-              </div>
+              {importTarget === 'watchlist' ? (
+                <div className="bg-zinc-900/40 border border-zinc-800/80 p-3 text-xs text-zinc-400 space-y-1">
+                  <span className="font-semibold text-zinc-300">How this affects your watchlist:</span>
+                  <ul className="list-disc list-inside space-y-0.5 text-zinc-400 text-[11px]">
+                    <li>All matched films are added directly to your personal <strong>Saved Watchlist</strong>.</li>
+                    <li>Synchronized to your cloud profile in Cloudflare D1 across all your devices.</li>
+                    <li>Titles will be instantly accessible under the <strong>My List</strong> tab.</li>
+                  </ul>
+                </div>
+              ) : (
+                <div className="bg-zinc-900/40 border border-zinc-800/80 p-3 text-xs text-zinc-400 space-y-1">
+                  <span className="font-semibold text-zinc-300">How this seeds your taste matrix:</span>
+                  <ul className="list-disc list-inside space-y-0.5 text-zinc-400 text-[11px]">
+                    <li>All matched films are added to your Profile's <strong>Watched Titles</strong> list.</li>
+                    <li>Films rated <strong>4★ and above</strong> are automatically added to your <strong>Favorites</strong>.</li>
+                    <li>Confidence weights (0.5 to 5.0) are calculated to train hybrid recommendations.</li>
+                  </ul>
+                </div>
+              )}
 
               <div className="flex justify-end gap-3 pt-2">
                 <button
@@ -373,9 +473,13 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
                 </button>
                 <button
                   onClick={handleStartImport}
-                  className="inline-flex items-center gap-2 px-5 py-2 bg-[#00E054] hover:bg-[#00c046] text-black font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-lg shadow-[#00E054]/20"
+                  className={`inline-flex items-center gap-2 px-5 py-2 font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-lg ${
+                    importTarget === 'watchlist'
+                      ? 'bg-[#E50914] hover:bg-[#c90812] text-white shadow-rose-950/40'
+                      : 'bg-[#00E054] hover:bg-[#00c046] text-black shadow-[#00E054]/20'
+                  }`}
                 >
-                  <span>Start TMDB Identifier Mapping</span>
+                  <span>{importTarget === 'watchlist' ? `Import ${parsedEntries.length} to Watchlist` : 'Start TMDB Identifier Mapping'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>

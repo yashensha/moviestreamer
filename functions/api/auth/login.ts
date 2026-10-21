@@ -106,6 +106,40 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       genre_ids: row.genre_ids ? JSON.parse(row.genre_ids) : [],
     }));
 
+    // Ensure user_watchlist exists before querying
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS user_watchlist (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        media_id INTEGER NOT NULL,
+        media_type TEXT NOT NULL DEFAULT 'movie',
+        title TEXT NOT NULL,
+        overview TEXT,
+        poster_path TEXT,
+        backdrop_path TEXT,
+        release_date TEXT,
+        vote_average REAL,
+        genre_ids TEXT,
+        number_of_seasons INTEGER,
+        added_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );`
+    ).run();
+
+    const watchlistResult = await db
+      .prepare(
+        `SELECT media_id as id, media_type, title, overview, poster_path, backdrop_path,
+                release_date, vote_average, genre_ids, number_of_seasons, added_at
+         FROM user_watchlist WHERE user_id = ?1 ORDER BY added_at DESC LIMIT 500`
+      )
+      .bind(user.id)
+      .all();
+
+    const watchlist = (watchlistResult.results || []).map((row: any) => ({
+      ...row,
+      genre_ids: row.genre_ids ? JSON.parse(row.genre_ids) : [],
+    }));
+
     return jsonResponse({
       success: true,
       token,
@@ -117,6 +151,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       watchHistory: historyResult.results || [],
       likedMedia,
       ratings,
+      watchlist,
     });
   } catch (error: any) {
     return jsonResponse({ error: error.message || 'Login failed.' }, 500);

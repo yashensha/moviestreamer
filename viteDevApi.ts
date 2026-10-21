@@ -25,6 +25,7 @@ interface DevDatabase {
   watchHistory: Record<string, any[]>;
   likedMedia: Record<string, any[]>;
   userRatings: Record<string, any[]>;
+  watchlist: Record<string, any[]>;
   tmdbCache: Record<string, any>;
   models: Record<string, any>;
 }
@@ -42,6 +43,7 @@ function loadDb(): DevDatabase {
         watchHistory: parsed.watchHistory || {},
         likedMedia: parsed.likedMedia || {},
         userRatings: parsed.userRatings || {},
+        watchlist: parsed.watchlist || {},
         tmdbCache: parsed.tmdbCache || {},
         models: parsed.models || {},
       };
@@ -56,6 +58,7 @@ function loadDb(): DevDatabase {
     watchHistory: {},
     likedMedia: {},
     userRatings: {},
+    watchlist: {},
     tmdbCache: {},
     models: {},
   };
@@ -271,6 +274,7 @@ export function viteDevApiPlugin(): Plugin {
             watchHistory: db.watchHistory[user.id] || [],
             likedMedia: db.likedMedia[user.id] || [],
             ratings: db.userRatings[user.id] || [],
+            watchlist: db.watchlist[user.id] || [],
           });
         }
 
@@ -304,6 +308,7 @@ export function viteDevApiPlugin(): Plugin {
             watchHistory: db.watchHistory[user.id] || [],
             likedMedia: db.likedMedia[user.id] || [],
             ratings: db.userRatings[user.id] || [],
+            watchlist: db.watchlist[user.id] || [],
           });
         }
 
@@ -321,7 +326,7 @@ export function viteDevApiPlugin(): Plugin {
         // 5. POST /api/user/sync
         if (pathname === '/api/user/sync' && method === 'POST') {
           const body = await parseJsonBody(req);
-          const { userId, watchHistory = [], likedMedia = [], userRatings } = body;
+          const { userId, watchHistory = [], likedMedia = [], userRatings, watchlist } = body;
 
           const authHeader = req.headers.authorization || '';
           const token = authHeader.replace(/^Bearer\s+/i, '').trim();
@@ -340,6 +345,9 @@ export function viteDevApiPlugin(): Plugin {
             db.likedMedia[targetUserId] = likedMedia;
             if (Array.isArray(userRatings)) {
               db.userRatings[targetUserId] = userRatings;
+            }
+            if (Array.isArray(watchlist)) {
+              db.watchlist[targetUserId] = watchlist;
             }
 
             // Compute Unified Interaction Matrix & BM25 Weights
@@ -574,6 +582,72 @@ export function viteDevApiPlugin(): Plugin {
             count: ratings.length,
             message: `Successfully processed ${ratings.length} ratings.`,
           });
+        }
+
+        // 8. /api/user/watchlist (GET, POST, DELETE)
+        if (pathname === '/api/user/watchlist') {
+          const authHeader = req.headers.authorization || '';
+          const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+          const parsedUrl = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+          let targetUserId = parsedUrl.searchParams.get('userId');
+
+          if (token) {
+            const session = db.sessions.find((s) => s.token === token);
+            if (session?.userId) {
+              targetUserId = session.userId;
+            }
+          }
+
+          if (method === 'GET') {
+            if (!targetUserId) {
+              return sendJson(res, { error: 'Unauthorized or missing userId' }, 401);
+            }
+            return sendJson(res, {
+              success: true,
+              watchlist: db.watchlist[targetUserId] || [],
+            });
+          }
+
+          if (method === 'POST') {
+            const body = await parseJsonBody(req);
+            const userForPost = targetUserId || body.userId;
+            if (!userForPost) {
+              return sendJson(res, { error: 'Unauthorized' }, 401);
+            }
+
+            const itemsToAdd: any[] = [];
+            if (body.item) itemsToAdd.push(body.item);
+            if (Array.isArray(body.items)) itemsToAdd.push(...body.items);
+            if (Array.isArray(body.watchlist)) itemsToAdd.push(...body.watchlist);
+
+            const current = db.watchlist[userForPost] || [];
+            const itemMap = new Map(current.map((item: any) => [Number(item.id), item]));
+            for (const item of itemsToAdd) {
+              itemMap.set(Number(item.id), item);
+            }
+            db.watchlist[userForPost] = Array.from(itemMap.values());
+            saveDb(db);
+
+            return sendJson(res, { success: true, count: itemsToAdd.length });
+          }
+
+          if (method === 'DELETE') {
+            if (!targetUserId) {
+              return sendJson(res, { error: 'Unauthorized' }, 401);
+            }
+            const mediaId = parsedUrl.searchParams.get('mediaId');
+            const clearAll = parsedUrl.searchParams.get('clear') === 'true';
+
+            if (clearAll) {
+              db.watchlist[targetUserId] = [];
+            } else if (mediaId) {
+              db.watchlist[targetUserId] = (db.watchlist[targetUserId] || []).filter(
+                (w: any) => Number(w.id) !== Number(mediaId)
+              );
+            }
+            saveDb(db);
+            return sendJson(res, { success: true });
+          }
         }
 
         // Unknown /api route

@@ -94,6 +94,8 @@ interface StreamState {
 
   removeFromWatchlist: (id: number) => void;
 
+  bulkAddToWatchlist: (items: MediaItem[]) => void;
+
   // Unified Media Lifecycle Status ('watched' | 'watching' | 'watchlist' | 'none')
   getMediaStatus: (id: number) => MediaStatus;
 
@@ -518,6 +520,10 @@ export const useStreamStore = create<StreamState>()(
             watchlist: [item, ...state.watchlist.filter((m) => Number(m.id) !== Number(item.id))],
           };
         });
+        const state = get();
+        import('../services/edgeSync').then((m) => {
+          m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
+        }).catch(() => {});
       },
 
       isInWatchlist: (id) => {
@@ -528,6 +534,43 @@ export const useStreamStore = create<StreamState>()(
         set((state) => ({
           watchlist: state.watchlist.filter((m) => Number(m.id) !== Number(id)),
         }));
+        const state = get();
+        import('../services/edgeSync').then((m) => {
+          m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
+        }).catch(() => {});
+      },
+
+      bulkAddToWatchlist: (items) => {
+        set((state) => {
+          const map = new Map((state.watchlist || []).map((m) => [Number(m.id), m]));
+          for (const item of items) {
+            const numId = Number(item.id);
+            if (!numId) continue;
+            if (!map.has(numId)) {
+              map.set(numId, {
+                id: numId,
+                title: item.title,
+                overview: item.overview || '',
+                poster_path: item.poster_path,
+                backdrop_path: item.backdrop_path ?? null,
+                media_type: item.media_type || 'movie',
+                release_date: item.release_date || '',
+                vote_average: item.vote_average ?? 8.0,
+                genre_ids: item.genre_ids || [],
+                number_of_seasons: item.number_of_seasons,
+              });
+            }
+          }
+          const updatedWatchlist = Array.from(map.values());
+          return {
+            watchlist: updatedWatchlist,
+          };
+        });
+
+        const state = get();
+        import('../services/edgeSync').then((m) => {
+          m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
+        }).catch(() => {});
       },
 
       // Media Lifecycle Status: 'watched' | 'watching' | 'watchlist' | 'none'

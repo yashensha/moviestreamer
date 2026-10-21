@@ -5,30 +5,71 @@ import type { MovieGenome } from './types';
 // In-memory cache for resolved genomes
 const genomeCache = new Map<string, MovieGenome>();
 
-// Lazy data holder references
-let movieThemesData: Record<string, { themes?: string[]; nanogenres?: string[]; genres?: string[] }> | null = null;
+// Compact data holders
+let movieThemeIds: Record<string, { t: number[]; n: number[] }> | null = null;
+let tvThemeIds: Record<string, { t: number[]; n: number[] }> | null = null;
+let themesById: Record<string, string> | null = null;
+let nanosById: Record<string, string> | null = null;
+
 let movieSubgenresData: Record<string, string[]> | null = null;
 let tvSubgenresData: Record<string, any> | null = null;
 
 let isThemesLoading = false;
 const themeWaiters: Array<() => void> = [];
 
+// Reactive dataset change listeners
+let datasetLoadedVersion = 0;
+const datasetListeners = new Set<() => void>();
+
+export function onGenomeDatasetLoaded(cb: () => void): () => void {
+  datasetListeners.add(cb);
+  return () => {
+    datasetListeners.delete(cb);
+  };
+}
+
+export function getGenomeDatasetVersion(): number {
+  return datasetLoadedVersion;
+}
+
+function notifyLoaded() {
+  genomeCache.clear();
+  datasetLoadedVersion++;
+  datasetListeners.forEach((fn) => {
+    try {
+      fn();
+    } catch (e) {
+      console.error('Error in genome dataset listener', e);
+    }
+  });
+}
+
 /**
- * Lazily loads Letterboxd themes data in the background
+ * Lazily loads compact themes and nanogenres mappings (< 4MB total vs 36MB)
  */
 export async function loadThemesDataset(): Promise<void> {
-  if (movieThemesData) return;
+  if (movieThemeIds && tvThemeIds && themesById && nanosById) return;
   if (isThemesLoading) {
     return new Promise((resolve) => themeWaiters.push(resolve));
   }
 
   isThemesLoading = true;
   try {
-    const mod = await import('../../data/movie_themes.json');
-    movieThemesData = (mod.default || mod) as any;
+    const [mIdsMod, tvIdsMod, thLookupMod, nanoLookupMod] = await Promise.all([
+      import('../../data/movie_theme_ids.json'),
+      import('../../data/tv_theme_ids.json').catch(() => ({ default: {} })),
+      import('../../data/themes_lookup.json'),
+      import('../../data/nanogenres_lookup.json'),
+    ]);
+
+    movieThemeIds = (mIdsMod.default || mIdsMod) as any;
+    tvThemeIds = (tvIdsMod.default || tvIdsMod) as any;
+    themesById = ((thLookupMod.default || thLookupMod) as any).byId || {};
+    nanosById = ((nanoLookupMod.default || nanoLookupMod) as any).byId || {};
+
+    notifyLoaded();
   } catch (err) {
-    console.warn('Failed to load movie_themes.json', err);
-    movieThemesData = {};
+    console.warn('Failed to load compact themes datasets', err);
   } finally {
     isThemesLoading = false;
     themeWaiters.forEach((cb) => cb());
@@ -68,15 +109,11 @@ if (typeof window !== 'undefined') {
     loadThemesDataset().catch(() => {});
     loadMovieSubgenresDataset().catch(() => {});
     loadTVSubgenresDataset().catch(() => {});
-  }, 20);
+  }, 10);
 }
 
 /**
  * Resolves 4-tier genome for any movie or TV show.
- * - Tier 1: Themes (40%)
- * - Tier 2: Microgenres (30%)
- * - Tier 3: Keywords (20%)
- * - Tier 4: Broad Genres (10%)
  */
 export async function resolveMovieGenome(
   id: number,
@@ -85,7 +122,7 @@ export async function resolveMovieGenome(
 ): Promise<MovieGenome> {
   const cacheKey = `${type}_${id}`;
   const cached = genomeCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached && (cached.themes.length > 0 || cached.microgenres.length > 0)) return cached;
 
   await Promise.all([
     loadThemesDataset(),
@@ -97,7 +134,7 @@ export async function resolveMovieGenome(
 
 /**
  * Synchronous genome resolver for ultra-fast in-memory and UI card lookups.
- * Checks in-memory datasets and caches results.
+ * Resolves numeric IDs to theme and nanogenre names via compact O(1) dictionary lookups.
  */
 export function resolveMovieGenomeSync(
   id: number,
@@ -106,7 +143,7 @@ export function resolveMovieGenomeSync(
 ): MovieGenome {
   const cacheKey = `${type}_${id}`;
   const cached = genomeCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached && (cached.themes.length > 0 || cached.microgenres.length > 0)) return cached;
 
   const idStr = String(id);
   const themes: string[] = [];
@@ -114,18 +151,22 @@ export function resolveMovieGenomeSync(
   const keywords: string[] = [];
   const genres: string[] = [];
 
-  // 1. Check Letterboxd themes dataset
-  if (movieThemesData && movieThemesData[idStr]) {
-    const themeEntry = movieThemesData[idStr];
-    if (Array.isArray(themeEntry.themes)) {
-      themes.push(...themeEntry.themes);
-    }
-    if (Array.isArray(themeEntry.nanogenres)) {
-      microgenres.push(...themeEntry.nanogenres);
-    }
-    if (Array.isArray(themeEntry.genres)) {
-      for (const g of themeEntry.genres) {
-        if (!genres.includes(g)) genres.push(g);
+  // 1. Resolve Letterboxd Themes and Nanogenres via Compact IDs
+  if (themesById && nanosById) {
+    const idMap = type === 'tv' ? tvThemeIds : movieThemeIds;
+    if (idMap && idMap[idStr]) {
+      const entry = idMap[idStr];
+      if (Array.isArray(entry.t)) {
+        for (const tid of entry.t) {
+          const name = themesById[String(tid)];
+          if (name) themes.push(name);
+        }
+      }
+      if (Array.isArray(entry.n)) {
+        for (const nid of entry.n) {
+          const name = nanosById[String(nid)];
+          if (name) microgenres.push(name);
+        }
       }
     }
   }
@@ -175,6 +216,10 @@ export function resolveMovieGenomeSync(
     genres: cleanList(genres),
   };
 
-  genomeCache.set(cacheKey, genome);
+  // Only cache if datasets are loaded (avoid caching incomplete early renders)
+  if (themesById && nanosById) {
+    genomeCache.set(cacheKey, genome);
+  }
+
   return genome;
 }
