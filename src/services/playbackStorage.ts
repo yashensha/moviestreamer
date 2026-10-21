@@ -157,7 +157,7 @@ export const getSavedPlaybackTime = (
  */
 export const syncPlaybackToDbOnExit = (): void => {
   const store = useStreamStore.getState();
-  syncOnExit(store.watchHistory, store.likedMedia, store.userRatings);
+  syncOnExit(store.watchHistory, store.likedMedia, store.userRatings, store.watchlist);
 };
 
 /**
@@ -165,5 +165,5 @@ export const syncPlaybackToDbOnExit = (): void => {
  */
 export const flushPlaybackSync = async (): Promise<void> => {
   const store = useStreamStore.getState();
-  await syncToEdgeImmediately(store.watchHistory, store.likedMedia, store.userRatings);
+  await syncToEdgeImmediately(store.watchHistory, store.likedMedia, store.userRatings, store.watchlist);
 };

@@ -34,10 +34,10 @@ let syncTimeout: any = null;
  * Debounced to prevent excessive network requests.
  */
 export const syncToEdge = (
-  watchHistory: WatchHistoryItem[],
-  likedMedia: MediaItem[],
-  userRatings: any[] = [],
-  watchlist: MediaItem[] = []
+  watchHistory?: WatchHistoryItem[],
+  likedMedia?: MediaItem[],
+  userRatings?: any[],
+  watchlist?: MediaItem[]
 ) => {
   if (typeof window === 'undefined') return;
 
@@ -56,15 +56,21 @@ export const syncToEdge = (
         headers['Authorization'] = `Bearer ${token}`;
       }
 
+      const store = useStreamStore.getState();
+      const payloadHistory = watchHistory !== undefined ? watchHistory : store.watchHistory;
+      const payloadLikes = likedMedia !== undefined ? likedMedia : store.likedMedia;
+      const payloadRatings = userRatings !== undefined ? userRatings : store.userRatings;
+      const payloadWatchlist = watchlist !== undefined ? watchlist : store.watchlist;
+
       await fetch('/api/user/sync', {
         method: 'POST',
         headers,
         body: JSON.stringify({
           userId,
-          watchHistory,
-          likedMedia,
-          userRatings,
-          watchlist,
+          watchHistory: payloadHistory,
+          likedMedia: payloadLikes,
+          userRatings: payloadRatings,
+          watchlist: payloadWatchlist,
         }),
       });
     } catch {
@@ -77,10 +83,10 @@ export const syncToEdge = (
  * Immediate sync without debounce (used when user navigates or completes an action).
  */
 export const syncToEdgeImmediately = async (
-  watchHistory: WatchHistoryItem[],
-  likedMedia: MediaItem[],
-  userRatings: any[] = [],
-  watchlist: MediaItem[] = []
+  watchHistory?: WatchHistoryItem[],
+  likedMedia?: MediaItem[],
+  userRatings?: any[],
+  watchlist?: MediaItem[]
 ): Promise<void> => {
   if (typeof window === 'undefined') return;
 
@@ -99,15 +105,21 @@ export const syncToEdgeImmediately = async (
       headers['Authorization'] = `Bearer ${token}`;
     }
 
+    const store = useStreamStore.getState();
+    const payloadHistory = watchHistory !== undefined ? watchHistory : store.watchHistory;
+    const payloadLikes = likedMedia !== undefined ? likedMedia : store.likedMedia;
+    const payloadRatings = userRatings !== undefined ? userRatings : store.userRatings;
+    const payloadWatchlist = watchlist !== undefined ? watchlist : store.watchlist;
+
     await fetch('/api/user/sync', {
       method: 'POST',
       headers,
       body: JSON.stringify({
         userId,
-        watchHistory,
-        likedMedia,
-        userRatings,
-        watchlist,
+        watchHistory: payloadHistory,
+        likedMedia: payloadLikes,
+        userRatings: payloadRatings,
+        watchlist: payloadWatchlist,
       }),
     });
   } catch {
@@ -120,10 +132,10 @@ export const syncToEdgeImmediately = async (
  * Runs on window beforeunload, pagehide, or when exiting the player.
  */
 export const syncOnExit = (
-  watchHistory: WatchHistoryItem[],
-  likedMedia: MediaItem[],
-  userRatings: any[] = [],
-  watchlist: MediaItem[] = []
+  watchHistory?: WatchHistoryItem[],
+  likedMedia?: MediaItem[],
+  userRatings?: any[],
+  watchlist?: MediaItem[]
 ): void => {
   if (typeof window === 'undefined') return;
 
@@ -135,12 +147,18 @@ export const syncOnExit = (
   try {
     const userId = getUserId();
     const token = getAuthToken();
+    const store = useStreamStore.getState();
+    const payloadHistory = watchHistory !== undefined ? watchHistory : store.watchHistory;
+    const payloadLikes = likedMedia !== undefined ? likedMedia : store.likedMedia;
+    const payloadRatings = userRatings !== undefined ? userRatings : store.userRatings;
+    const payloadWatchlist = watchlist !== undefined ? watchlist : store.watchlist;
+
     const payload = JSON.stringify({
       userId,
-      watchHistory,
-      likedMedia,
-      userRatings,
-      watchlist,
+      watchHistory: payloadHistory,
+      likedMedia: payloadLikes,
+      userRatings: payloadRatings,
+      watchlist: payloadWatchlist,
     });
 
     if (navigator.sendBeacon) {

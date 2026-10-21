@@ -4,9 +4,8 @@ import type { MediaItem, PersonItem } from './types/movie';
 import {
   fetchTrendingMedia,
   fetchPopularSeries,
+  fetchPopularMovies,
   multiSearchWithTMDB,
-  CURATED_MOVIES,
-  CURATED_SERIES,
 } from './services/tmdb';
 import { NetflixNavbar } from './components/NetflixNavbar';
 import { NetflixHero } from './components/NetflixHero';
@@ -21,8 +20,6 @@ import { PopularOnNetflixRow } from './components/PopularOnNetflixRow';
 import { TopRatedPage } from './components/TopRatedPage';
 import { letterboxdTop500List, imdbTop200SeriesList } from './services/topRatedLists';
 import {
-  LetterboxdIcon,
-  ImdbIcon,
   LetterboxdRankBadge,
   ImdbRankBadge,
 } from './components/PrestigeBadges';
@@ -64,6 +61,7 @@ function BrowseView({
 
   useEffect(() => {
     let isCurrent = true;
+    setTasteHighMatch([]); // Clear on tab switch so previous tab's media types never bleed
     const profile = buildUserTasteProfile(watchHistory, likedMedia, userRatings, dislikedMedia, watchlist);
 
     runTasteRecommendationPipeline(profile, {
@@ -72,7 +70,12 @@ function BrowseView({
       .then((res) => {
         if (!isCurrent) return;
         if (res.topPicks && res.topPicks.length > 0) {
-          const unhit = res.topPicks.filter((item) => !isWatched(item.id));
+          let unhit = res.topPicks.filter((item) => !isWatched(item.id));
+          if (tab === 'movie') {
+            unhit = unhit.filter((item) => item.media_type === 'movie');
+          } else if (tab === 'tv') {
+            unhit = unhit.filter((item) => item.media_type === 'tv');
+          }
           if (unhit.length > 0) {
             setTasteHighMatch(unhit);
           }
@@ -105,20 +108,24 @@ function BrowseView({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Filter out ANY watched titles (movies & shows) from Home page rows
+  // Filter out ANY watched titles (movies & shows) strictly partitioned by media_type
   const homeTrending = useMemo(() => {
-    if (tab === 'home') {
-      return trending.filter((item) => !isWatched(item.id));
+    if (tab === 'movie') {
+      return trending.filter((item) => item.media_type === 'movie' && !isWatched(item.id));
     }
-    return trending;
+    if (tab === 'tv') {
+      return trending.filter((item) => item.media_type === 'tv' && !isWatched(item.id));
+    }
+    return trending.filter((item) => !isWatched(item.id));
   }, [trending, isWatched, tab]);
 
   const homeMoviesList = useMemo(() => {
-    if (tab === 'home') {
-      return moviesList.filter((item) => !isWatched(item.id));
-    }
-    return moviesList;
-  }, [moviesList, isWatched, tab]);
+    return moviesList.filter((item) => item.media_type === 'movie' && !isWatched(item.id));
+  }, [moviesList, isWatched]);
+
+  const homeSeriesList = useMemo(() => {
+    return seriesList.filter((item) => item.media_type === 'tv' && !isWatched(item.id));
+  }, [seriesList, isWatched]);
 
   // Active continue watching items (strictly excluding completed/watched items & dismissed items, requiring actual progress)
   const activeContinueWatching = useMemo(() => {
@@ -151,10 +158,10 @@ function BrowseView({
 
   const featuredList = useMemo(() => {
     if (tab === 'tv') {
-      return seriesList.slice(0, 8);
+      return seriesList.filter((s) => s.media_type === 'tv').slice(0, 8);
     }
     if (tab === 'movie') {
-      return moviesList.slice(0, 8);
+      return moviesList.filter((m) => m.media_type === 'movie').slice(0, 8);
     }
     // On home: feature continue watching FIRST if available, then trending
     if (continueWatchingMedia.length > 0) {
@@ -169,9 +176,9 @@ function BrowseView({
   const popularNetflixList = useMemo(() => {
     const source =
       tab === 'tv'
-        ? seriesList
+        ? seriesList.filter((s) => s.media_type === 'tv')
         : tab === 'movie'
-        ? moviesList
+        ? moviesList.filter((m) => m.media_type === 'movie')
         : [...seriesList, ...trending];
     const seen = new Set<number>();
     return source.filter((item) => {
@@ -217,6 +224,7 @@ function BrowseView({
                       : 'Popular on Netflix'
                   }
                   items={tasteHighMatch.length > 0 ? tasteHighMatch : popularNetflixList}
+                  variant="backdrop"
                   onSelect={onOpenItem}
                   onPlay={onPlayHero}
                 />
@@ -235,21 +243,25 @@ function BrowseView({
             <TailoredRecommendationsRow
               onSelect={onOpenItem}
               onPlay={onPlayHero}
+              cardVariant="tall"
               mediaType={tab === 'tv' ? 'tv' : tab === 'movie' ? 'movie' : undefined}
+              heroItemIds={tasteHighMatch.length > 0 ? tasteHighMatch.slice(0, 10).map((i) => i.id) : undefined}
               title={
                 tab === 'tv'
                   ? 'Top Series Tailored for You'
                   : tab === 'movie'
                   ? 'Top Movies Tailored for You'
+                  : tasteHighMatch.length > 0
+                  ? 'Recommended for You Today'
                   : 'Top Picks for You'
               }
             />
 
-            {/* Letterboxd Official Top 500 (Shown on Movies & Home as Tall Portrait Cards) */}
+            {/* Letterboxd Official Top 500 (Shown strictly on Movies & Home as Tall Portrait Cards) */}
             {(tab === 'home' || tab === 'movie') && (
               <PopularOnNetflixRow
                 title="Letterboxd Official Top 500"
-                items={letterboxdTop500List.slice(0, 30)}
+                items={letterboxdTop500List.filter((m) => m.media_type === 'movie').slice(0, 30)}
                 variant="tall"
                 imageType="backdrop"
                 onSelect={onOpenItem}
@@ -259,11 +271,11 @@ function BrowseView({
               />
             )}
 
-            {/* IMDb Top 200 TV Series (Shown on TV Shows & Home as Tall Portrait Cards) */}
+            {/* IMDb Top 200 TV Series (Shown strictly on TV Shows & Home as Tall Portrait Cards) */}
             {(tab === 'home' || tab === 'tv') && (
               <PopularOnNetflixRow
                 title="IMDb Top 200 TV Series of All Time"
-                items={imdbTop200SeriesList.slice(0, 30)}
+                items={imdbTop200SeriesList.filter((s) => s.media_type === 'tv').slice(0, 30)}
                 variant="tall"
                 imageType="backdrop"
                 onSelect={onOpenItem}
@@ -275,30 +287,55 @@ function BrowseView({
               />
             )}
 
-            {/* Trending Now */}
+            {/* Trending Row - Strict media_type separation */}
             {(tab === 'home' || tab === 'movie') && (
               <PopularOnNetflixRow
-                title="Trending Now"
-                items={homeTrending}
+                title={tab === 'movie' ? 'Trending Movies' : 'Trending Now'}
+                items={
+                  tab === 'movie'
+                    ? trending.filter((item) => item.media_type === 'movie' && !isWatched(item.id))
+                    : homeTrending
+                }
+                variant="tall"
+                imageType="backdrop"
                 onSelect={onOpenItem}
+                onPlay={onPlayHero}
               />
             )}
 
-            {/* Popular TV Shows & Series */}
+            {/* Trending TV Series on TV Tab */}
+            {tab === 'tv' && (
+              <PopularOnNetflixRow
+                title="Trending TV Series"
+                items={trending.filter((item) => item.media_type === 'tv' && !isWatched(item.id))}
+                variant="tall"
+                imageType="backdrop"
+                onSelect={onOpenItem}
+                onPlay={onPlayHero}
+              />
+            )}
+
+            {/* Popular TV Shows & Series (Strictly TV only) */}
             {tab === 'tv' && (
               <PopularOnNetflixRow
                 title="Critically Acclaimed TV Shows & Series"
-                items={seriesList}
+                items={homeSeriesList}
+                variant="tall"
+                imageType="backdrop"
                 onSelect={onOpenItem}
+                onPlay={onPlayHero}
               />
             )}
 
-            {/* Blockbuster Movies */}
+            {/* Blockbuster Movies (Strictly Movies only) */}
             {(tab === 'home' || tab === 'movie') && (
               <PopularOnNetflixRow
                 title="Blockbuster Movies"
                 items={homeMoviesList}
+                variant="tall"
+                imageType="backdrop"
                 onSelect={onOpenItem}
+                onPlay={onPlayHero}
               />
             )}
           </div>
@@ -347,21 +384,26 @@ function WatchRedirect() {
 export function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [trending, setTrending] = useState<MediaItem[]>(CURATED_MOVIES);
-  const [seriesList, setSeriesList] = useState<MediaItem[]>(CURATED_SERIES);
-  const [moviesList, setMoviesList] = useState<MediaItem[]>(CURATED_MOVIES);
+  const [trending, setTrending] = useState<MediaItem[]>([]);
+  const [seriesList, setSeriesList] = useState<MediaItem[]>([]);
+  const [moviesList, setMoviesList] = useState<MediaItem[]>([]);
 
   const checkSession = useAuthStore((state) => state.checkSession);
 
-  // Initial load
+  // Initial load: Fetch live trending, popular series, and popular movies from TMDB
   const loadMedia = async () => {
-    const [trend, popularTv] = await Promise.all([
+    const [trend, popularTv, popularMovies] = await Promise.all([
       fetchTrendingMedia(),
       fetchPopularSeries(),
+      fetchPopularMovies(),
     ]);
 
     if (trend && trend.length > 0) {
       setTrending(trend);
+    }
+    if (popularMovies && popularMovies.length > 0) {
+      setMoviesList(popularMovies);
+    } else if (trend && trend.length > 0) {
       const filteredMovies = trend.filter((m) => m.media_type === 'movie');
       if (filteredMovies.length > 0) setMoviesList(filteredMovies);
     }

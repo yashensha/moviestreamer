@@ -24,7 +24,7 @@ import {
   VolumeX,
   ChevronDown,
 } from 'lucide-react';
-import { NetflixBackdropCard } from './NetflixBackdropCard';
+import { NetflixTallCard } from './NetflixTallCard';
 
 interface NetflixDetailModalProps {
   media: MediaItem | null;
@@ -498,12 +498,17 @@ export const NetflixDetailModal: React.FC<NetflixDetailModalProps> = ({
               <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
                 More Like This
               </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                 {similarItems.map((item) => (
-                  <NetflixBackdropCard
+                  <NetflixTallCard
                     key={item.id}
                     item={item}
+                    imageType="backdrop"
                     onSelect={(selected) => setDetails(selected)}
+                    onPlay={(selected) => {
+                      onClose();
+                      onPlay(selected);
+                    }}
                     className="w-full"
                   />
                 ))}

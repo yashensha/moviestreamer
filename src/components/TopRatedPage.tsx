@@ -9,8 +9,6 @@ import {
   type TopRankedMediaItem,
 } from '../services/topRatedLists';
 import {
-  LetterboxdIcon,
-  ImdbIcon,
   LetterboxdRankBadge,
   ImdbRankBadge,
 } from './PrestigeBadges';

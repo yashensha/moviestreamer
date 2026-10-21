@@ -1161,6 +1161,57 @@ export const fetchPopularSeries = async (): Promise<MediaItem[]> => {
   return CURATED_SERIES;
 };
 
+// Fetch Popular Movies row
+export const fetchPopularMovies = async (): Promise<MediaItem[]> => {
+  try {
+    const client = getTmdbClient();
+    const res = await client.movies.popular();
+    if (res && res.results && res.results.length > 0) {
+      return res.results.map((item: any) => ({
+        id: item.id,
+        title: item.title || 'Untitled',
+        original_title: item.original_title,
+        overview: item.overview || '',
+        poster_path: item.poster_path ?? null,
+        backdrop_path: item.backdrop_path ?? null,
+        release_date: item.release_date || '',
+        vote_average: item.vote_average || 0,
+        vote_count: item.vote_count || 0,
+        media_type: 'movie',
+        genre_ids: item.genre_ids || [],
+      }));
+    }
+  } catch (err) {
+    console.warn('tmdb-ts popular movie error, trying direct API:', err);
+  }
+
+  try {
+    const res = await fetch(`https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_API_KEY}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.results && data.results.length > 0) {
+        return data.results.map((item: any) => ({
+          id: item.id,
+          title: item.title || 'Untitled',
+          original_title: item.original_title,
+          overview: item.overview || '',
+          poster_path: item.poster_path ?? null,
+          backdrop_path: item.backdrop_path ?? null,
+          release_date: item.release_date || '',
+          vote_average: item.vote_average || 0,
+          vote_count: item.vote_count || 0,
+          media_type: 'movie',
+          genre_ids: item.genre_ids || [],
+        }));
+      }
+    }
+  } catch (err) {
+    console.error('Direct TMDB API popular movie fetch failed:', err);
+  }
+
+  return CURATED_MOVIES;
+};
+
 // Fetch media tags / keywords (for Netflix "This show/movie is: ..." tags)
 export const fetchMediaKeywords = async (
   id: number,

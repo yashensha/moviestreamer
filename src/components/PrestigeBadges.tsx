@@ -28,27 +28,25 @@ export const ImdbIcon: React.FC<{ className?: string }> = ({ className = 'w-8 h-
 );
 
 /**
- * Rank badge for Letterboxd items
+ * Solid bold rank number with crisp Netflix outline (no box)
  */
 export const LetterboxdRankBadge: React.FC<{ rank: number }> = ({ rank }) => (
-  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur-md border border-white/15 text-[11px] font-bold text-white shadow-lg">
-    <span className="w-1.5 h-1.5 rounded-full bg-[#00e054] inline-block shrink-0 shadow-[0_0_6px_#00e054]" />
-    <span className="text-[#00e054]">#</span>
-    <span className="text-zinc-100">{rank}</span>
-  </div>
+  <span
+    className="font-black text-xl sm:text-2xl md:text-3xl text-white opacity-45 select-none tracking-tighter leading-none inline-block font-sans"
+    
+  >
+    {rank}
+  </span>
 );
 
 /**
- * Rank badge for IMDb items
+ * Solid bold rank number with crisp Netflix outline (no box)
  */
-export const ImdbRankBadge: React.FC<{ rank: number; rating?: number }> = ({ rank, rating }) => (
-  <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-black/85 backdrop-blur-md border border-[#f5c518]/30 text-[11px] font-bold text-white shadow-lg">
-    <span className="text-[#f5c518]">#{rank}</span>
-    {rating && (
-      <>
-        <span className="text-zinc-500 font-light">•</span>
-        <span className="text-zinc-200 font-medium">★ {rating.toFixed(1)}</span>
-      </>
-    )}
-  </div>
+export const ImdbRankBadge: React.FC<{ rank: number; rating?: number }> = ({ rank }) => (
+  <span
+    className="font-black text-xl sm:text-2xl md:text-3xl text-white opacity-45 select-none tracking-tighter leading-none inline-block font-sans"
+  
+  >
+    {rank}
+  </span>
 );

@@ -99,13 +99,47 @@ export const useAuthStore = create<AuthState>()(
             error: null,
           });
 
-          // Isolate per-user state: load this user's DB records directly
-          useStreamStore.setState({
-            watchHistory,
-            likedMedia,
-            userRatings: ratings,
-            watchlist,
+          // Merge guest/local items with DB items on login so nothing is lost
+          const currentStore = useStreamStore.getState();
+
+          const mergedLikesMap = new Map<number, any>();
+          likedMedia.forEach((m: any) => {
+            if (m?.id) mergedLikesMap.set(Number(m.id), m);
           });
+          (currentStore.likedMedia || []).forEach((m: any) => {
+            if (m?.id && !mergedLikesMap.has(Number(m.id))) {
+              mergedLikesMap.set(Number(m.id), m);
+            }
+          });
+          const finalLikes = Array.from(mergedLikesMap.values());
+
+          const mergedWatchlistMap = new Map<number, any>();
+          watchlist.forEach((m: any) => {
+            if (m?.id) mergedWatchlistMap.set(Number(m.id), m);
+          });
+          (currentStore.watchlist || []).forEach((m: any) => {
+            if (m?.id && !mergedWatchlistMap.has(Number(m.id))) {
+              mergedWatchlistMap.set(Number(m.id), m);
+            }
+          });
+          const finalWatchlist = Array.from(mergedWatchlistMap.values());
+
+          const finalHistory = watchHistory.length > 0 ? watchHistory : currentStore.watchHistory;
+          const finalRatings = ratings.length > 0 ? ratings : currentStore.userRatings;
+
+          useStreamStore.setState({
+            watchHistory: finalHistory,
+            likedMedia: finalLikes,
+            userRatings: finalRatings,
+            watchlist: finalWatchlist,
+          });
+
+          // Sync merged state immediately to server
+          import('../services/edgeSync')
+            .then((m) => {
+              m.syncToEdgeImmediately(finalHistory, finalLikes, finalRatings, finalWatchlist);
+            })
+            .catch(() => {});
 
           return { success: true };
         } catch (err: any) {
@@ -225,21 +259,84 @@ export const useAuthStore = create<AuthState>()(
             const filteredHistory = filterOutDeleted(data.watchHistory);
             const filteredLikes = filterOutDeleted(data.likedMedia);
             const filteredRatings = filterOutDeleted(data.ratings);
-            const filteredWatchlist = data.watchlist || [];
+            const filteredWatchlist = filterOutDeleted(data.watchlist);
 
-            // Load authenticated user's records from DB into client state
+            // SMART MERGE: Never clobber local likes or watchlist if local has items that haven't synced yet
+            const currentStore = useStreamStore.getState();
+
+            // 1. Merge Liked Media (preserving local additions)
+            const localLikes = (currentStore.likedMedia || []).filter((item: any) => !deletedSet.has(Number(item.id)));
+            const mergedLikesMap = new Map<number, any>();
+            filteredLikes.forEach((item: any) => {
+              if (item?.id) mergedLikesMap.set(Number(item.id), item);
+            });
+            localLikes.forEach((item: any) => {
+              if (item?.id && !mergedLikesMap.has(Number(item.id))) {
+                mergedLikesMap.set(Number(item.id), item);
+              }
+            });
+            const mergedLikes = Array.from(mergedLikesMap.values());
+
+            // 2. Merge Watchlist (preserving local additions)
+            const localWatchlist = (currentStore.watchlist || []).filter((item: any) => !deletedSet.has(Number(item.id)));
+            const mergedWatchlistMap = new Map<number, any>();
+            filteredWatchlist.forEach((item: any) => {
+              if (item?.id) mergedWatchlistMap.set(Number(item.id), item);
+            });
+            localWatchlist.forEach((item: any) => {
+              if (item?.id && !mergedWatchlistMap.has(Number(item.id))) {
+                mergedWatchlistMap.set(Number(item.id), item);
+              }
+            });
+            const mergedWatchlist = Array.from(mergedWatchlistMap.values());
+
+            // 3. Merge Watch History
+            const localHistory = (currentStore.watchHistory || []).filter((item: any) => !deletedSet.has(Number(item.id)));
+            const mergedHistoryMap = new Map<string, any>();
+            filteredHistory.forEach((item: any) => {
+              if (item?.id) mergedHistoryMap.set(`${item.type || 'movie'}:${item.id}`, item);
+            });
+            localHistory.forEach((item: any) => {
+              const key = `${item.type || 'movie'}:${item.id}`;
+              const existing = mergedHistoryMap.get(key);
+              if (!existing || (item.updatedAt || 0) > (existing.updatedAt || 0)) {
+                mergedHistoryMap.set(key, item);
+              }
+            });
+            const mergedHistory = Array.from(mergedHistoryMap.values());
+
+            // 4. Merge User Ratings
+            const localRatings = (currentStore.userRatings || []).filter((item: any) => !deletedSet.has(Number(item.id)));
+            const mergedRatingsMap = new Map<string, any>();
+            filteredRatings.forEach((item: any) => {
+              if (item?.id) mergedRatingsMap.set(`${item.type || 'movie'}:${item.id}`, item);
+            });
+            localRatings.forEach((item: any) => {
+              const key = `${item.type || 'movie'}:${item.id}`;
+              if (!mergedRatingsMap.has(key)) {
+                mergedRatingsMap.set(key, item);
+              }
+            });
+            const mergedRatings = Array.from(mergedRatingsMap.values());
+
             useStreamStore.setState({
-              watchHistory: filteredHistory,
-              likedMedia: filteredLikes,
-              userRatings: filteredRatings,
-              watchlist: filteredWatchlist,
+              watchHistory: mergedHistory,
+              likedMedia: mergedLikes,
+              userRatings: mergedRatings,
+              watchlist: mergedWatchlist,
             });
 
-            // If remote DB had items that were locally deleted, push sanitized state back immediately
-            if (deletedSet.size > 0) {
+            // If local state had additions that the server didn't have, or items were deleted, sync back immediately
+            const hadLocalAdditions =
+              mergedLikes.length !== filteredLikes.length ||
+              mergedWatchlist.length !== filteredWatchlist.length ||
+              mergedHistory.length !== filteredHistory.length ||
+              deletedSet.size > 0;
+
+            if (hadLocalAdditions) {
               import('../services/edgeSync')
                 .then((m) => {
-                  m.syncToEdgeImmediately(filteredHistory, filteredLikes, filteredRatings, filteredWatchlist);
+                  m.syncToEdgeImmediately(mergedHistory, mergedLikes, mergedRatings, mergedWatchlist);
                 })
                 .catch(() => {});
             }

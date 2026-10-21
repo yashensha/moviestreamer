@@ -85,25 +85,37 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     ).bind(targetUserId, now, now).run();
 
     // 2. Persist Liked Titles in D1
-    for (const item of likedMedia) {
-      const gids: number[] = item.genre_ids || (item.genres ? item.genres.map((g: any) => g.id) : []);
-      const recordId = `${targetUserId}:${item.id}`;
-      await db.prepare(
-        `INSERT INTO liked_titles (id, user_id, media_id, media_type, title, poster_path, backdrop_path, genre_ids, vote_average, liked_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-         ON CONFLICT(id) DO UPDATE SET liked_at = ?10`
-      ).bind(
-        recordId,
-        targetUserId,
-        item.id,
-        item.media_type || 'movie',
-        item.title || 'Untitled',
-        item.poster_path || null,
-        item.backdrop_path || null,
-        JSON.stringify(gids),
-        item.vote_average || 0,
-        now
-      ).run();
+    if (Array.isArray(likedMedia)) {
+      const activeLikedIds = likedMedia.map((l: any) => Number(l.id)).filter(Boolean);
+      if (activeLikedIds.length > 0) {
+        const placeholders = activeLikedIds.map(() => '?').join(',');
+        await db.prepare(
+          `DELETE FROM liked_titles WHERE user_id = ? AND media_id NOT IN (${placeholders})`
+        ).bind(targetUserId, ...activeLikedIds).run();
+      } else {
+        await db.prepare('DELETE FROM liked_titles WHERE user_id = ?').bind(targetUserId).run();
+      }
+
+      for (const item of likedMedia) {
+        const gids: number[] = item.genre_ids || (item.genres ? item.genres.map((g: any) => g.id) : []);
+        const recordId = `${targetUserId}:${item.id}`;
+        await db.prepare(
+          `INSERT INTO liked_titles (id, user_id, media_id, media_type, title, poster_path, backdrop_path, genre_ids, vote_average, liked_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+           ON CONFLICT(id) DO UPDATE SET liked_at = ?10`
+        ).bind(
+          recordId,
+          targetUserId,
+          item.id,
+          item.media_type || 'movie',
+          item.title || 'Untitled',
+          item.poster_path || null,
+          item.backdrop_path || null,
+          JSON.stringify(gids),
+          item.vote_average || 0,
+          now
+        ).run();
+      }
     }
 
     // 3. Persist Watch History in D1

@@ -59,8 +59,17 @@ export interface UnifiedMatchResult {
 
 export interface TasteEngineRows {
   topPicks: MediaItem[];
+  moreTopMatches?: MediaItem[];
   becauseYouWatched?: {
     seedTitle: string;
+    items: MediaItem[];
+  };
+  secondaryBecauseYouWatched?: {
+    seedTitle: string;
+    items: MediaItem[];
+  };
+  hiddenGems?: {
+    title: string;
     items: MediaItem[];
   };
   thematicRows: Array<{
@@ -68,5 +77,9 @@ export interface TasteEngineRows {
     themeOrGenre: string;
     items: MediaItem[];
   }>;
+  prestigePicks?: {
+    title: string;
+    items: MediaItem[];
+  };
   totalPoolCount: number;
 }

@@ -342,7 +342,9 @@ export function viteDevApiPlugin(): Plugin {
 
           if (targetUserId) {
             db.watchHistory[targetUserId] = watchHistory;
-            db.likedMedia[targetUserId] = likedMedia;
+            if (Array.isArray(likedMedia)) {
+              db.likedMedia[targetUserId] = likedMedia;
+            }
             if (Array.isArray(userRatings)) {
               db.userRatings[targetUserId] = userRatings;
             }

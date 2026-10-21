@@ -64,7 +64,7 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
          FROM liked_titles
          WHERE user_id = ?1
          ORDER BY liked_at DESC
-         LIMIT 100`
+         LIMIT 500`
       )
       .bind(user.id)
       .all();

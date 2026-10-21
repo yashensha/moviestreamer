@@ -29,6 +29,7 @@ export interface NetflixTallCardProps {
   onRate?: (item: MediaItem) => void;
   onRemove?: (item: MediaItem) => void;
   badge?: React.ReactNode;
+  progress?: number;
 }
 
 export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
@@ -42,6 +43,7 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
   onMarkWatched,
   onRemove,
   badge,
+  progress,
 }) => {
   const navigate = useNavigate();
 
@@ -197,9 +199,9 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
           className="w-full h-full object-cover rounded-none brightness-[0.92] group-hover/card:brightness-105 transition-all duration-500"
         />
 
-        {/* Optional Custom Badge Overlay (e.g., Rank badge) */}
+        {/* Optional Custom Badge Overlay (Solid number with Netflix bold font and outline, no box) */}
         {badge && (
-          <div className="absolute top-2 left-2 z-20 pointer-events-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]">
+          <div className="absolute top-2.5 left-3 z-20 pointer-events-none transition-transform duration-300 group-hover/card:scale-105">
             {badge}
           </div>
         )}
@@ -218,6 +220,16 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
             </h3>
           )}
         </div>
+
+        {/* Netflix Red Progress Bar */}
+        {typeof progress === 'number' && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700/80 z-20 pointer-events-none">
+            <div
+              className="h-full bg-rose-600 transition-all duration-300"
+              style={{ width: `${Math.min(100, Math.max(12, progress))}%` }}
+            />
+          </div>
+        )}
 
         {/* ======================================================== */}
         {/* HOVER EXPANDED OVERLAY & CONTROLS                        */}

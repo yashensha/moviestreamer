@@ -157,12 +157,7 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
             >
               Movies
             </button>
-            <button
-              onClick={() => handleNav('home', '/')}
-              className="text-zinc-300 hover:text-zinc-400 transition cursor-pointer"
-            >
-              New & Popular
-            </button>
+           
             <button
               onClick={() => handleNav('top-rated' as any, '/top-rated')}
               className={`transition cursor-pointer ${

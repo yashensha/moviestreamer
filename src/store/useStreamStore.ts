@@ -212,6 +212,16 @@ export const useStreamStore = create<StreamState>()(
             dismissedHistoryIds: (state.dismissedHistoryIds || []).filter((dId) => dId !== seriesId),
           };
         });
+
+        // Immediately sync to edge so Continue Watching is persistent
+        try {
+          const state = get();
+          import('../services/edgeSync')
+            .then((m) => {
+              m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
+            })
+            .catch(() => {});
+        } catch {}
       },
 
       getSeriesLastEpisode: (seriesId) => {
@@ -245,6 +255,15 @@ export const useStreamStore = create<StreamState>()(
             dismissedHistoryIds: (state.dismissedHistoryIds || []).filter((dId) => dId !== movie.id),
           };
         });
+
+        try {
+          const state = get();
+          import('../services/edgeSync')
+            .then((m) => {
+              m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
+            })
+            .catch(() => {});
+        } catch {}
       },
 
       removeFromHistory: (id) => {
@@ -279,6 +298,15 @@ export const useStreamStore = create<StreamState>()(
             dismissedHistoryIds: updatedDismissed,
           };
         });
+
+        try {
+          const state = get();
+          import('../services/edgeSync')
+            .then((m) => {
+              m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
+            })
+            .catch(() => {});
+        } catch {}
       },
 
       clearHistory: () => {
@@ -307,44 +335,67 @@ export const useStreamStore = create<StreamState>()(
       },
 
       toggleLike: (item) => {
+        let nextLiked: MediaItem[] = [];
+        let nextDisliked: MediaItem[] = [];
         set((state) => {
-          const exists = state.likedMedia.some((m) => Number(m.id) === Number(item.id));
+          const numId = Number(item.id);
+          const exists = state.likedMedia.some((m) => Number(m.id) === numId);
           if (exists) {
+            nextLiked = state.likedMedia.filter((m) => Number(m.id) !== numId);
+            nextDisliked = state.dislikedMedia || [];
             return {
-              likedMedia: state.likedMedia.filter((m) => Number(m.id) !== Number(item.id)),
+              likedMedia: nextLiked,
             };
           }
+          nextLiked = [item, ...state.likedMedia.filter((m) => Number(m.id) !== numId)];
+          // Mutually exclusive: un-dislike if previously disliked
+          nextDisliked = (state.dislikedMedia || []).filter((m) => Number(m.id) !== numId);
           return {
-            likedMedia: [item, ...state.likedMedia.filter((m) => Number(m.id) !== Number(item.id))].slice(0, 50),
-            // Mutually exclusive: un-dislike if previously disliked
-            dislikedMedia: (state.dislikedMedia || []).filter((m) => Number(m.id) !== Number(item.id)),
+            likedMedia: nextLiked,
+            dislikedMedia: nextDisliked,
           };
         });
+
+        // Immediately sync to edge and dev server so like changes are never reverted
+        const state = get();
+        import('../services/edgeSync')
+          .then((m) => {
+            m.syncToEdgeImmediately(state.watchHistory, nextLiked, state.userRatings, state.watchlist);
+          })
+          .catch(() => {});
       },
 
       isLiked: (id) => {
-        return get().likedMedia.some((m) => Number(m.id) === Number(id));
+        const numId = Number(id);
+        return get().likedMedia.some((m) => Number(m.id) === numId);
       },
 
       toggleDislike: (item) => {
+        let updatedLiked: MediaItem[] = [];
+        let updatedWatchlist: MediaItem[] = [];
+        let updatedRatings: UserRatingItem[] = [];
+        let updatedDisliked: MediaItem[] = [];
+
         set((state) => {
           const numId = Number(item.id);
           const isCurrentlyDisliked = (state.dislikedMedia || []).some((m) => Number(m.id) === numId);
           if (isCurrentlyDisliked) {
+            updatedDisliked = (state.dislikedMedia || []).filter((m) => Number(m.id) !== numId);
+            updatedRatings = state.userRatings.filter(
+              (r) => Number(r.id) !== numId || r.source !== 'in_app' || (r.rating !== undefined && r.rating > 1.5)
+            );
             return {
-              dislikedMedia: (state.dislikedMedia || []).filter((m) => Number(m.id) !== numId),
-              userRatings: state.userRatings.filter(
-                (r) => Number(r.id) !== numId || r.source !== 'in_app' || (r.rating !== undefined && r.rating > 1.5)
-              ),
+              dislikedMedia: updatedDisliked,
+              userRatings: updatedRatings,
             };
           }
 
           // Add to dislikedMedia
-          const updatedDisliked = [item, ...(state.dislikedMedia || []).filter((m) => Number(m.id) !== numId)].slice(0, 100);
+          updatedDisliked = [item, ...(state.dislikedMedia || []).filter((m) => Number(m.id) !== numId)];
           // Mutually exclusive: remove from likedMedia
-          const updatedLiked = state.likedMedia.filter((m) => Number(m.id) !== numId);
+          updatedLiked = state.likedMedia.filter((m) => Number(m.id) !== numId);
           // Remove from watchlist if present
-          const updatedWatchlist = state.watchlist.filter((m) => Number(m.id) !== numId);
+          updatedWatchlist = state.watchlist.filter((m) => Number(m.id) !== numId);
 
           // Add explicit negative rating signal into userRatings for recommendation matrix
           const negativeRating: UserRatingItem = {
@@ -362,7 +413,7 @@ export const useStreamStore = create<StreamState>()(
             ratedAt: Date.now(),
           };
 
-          const updatedRatings = [
+          updatedRatings = [
             negativeRating,
             ...state.userRatings.filter((r) => Number(r.id) !== numId),
           ];
@@ -374,6 +425,13 @@ export const useStreamStore = create<StreamState>()(
             userRatings: updatedRatings,
           };
         });
+
+        const state = get();
+        import('../services/edgeSync')
+          .then((m) => {
+            m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
+          })
+          .catch(() => {});
       },
 
       isDisliked: (id) => {
@@ -484,9 +542,10 @@ export const useStreamStore = create<StreamState>()(
 
         // Immediately sync removal to edge and dev server
         try {
+          const state = get();
           import('../services/edgeSync')
             .then((m) => {
-              m.syncToEdgeImmediately(nextHistory, nextLikes, nextRatings);
+              m.syncToEdgeImmediately(nextHistory, nextLikes, nextRatings, state.watchlist);
             })
             .catch(() => {});
         } catch {}
@@ -500,29 +559,29 @@ export const useStreamStore = create<StreamState>()(
         if (inWatchlist) return false;
         return Boolean(
           (state.watchedList && state.watchedList.some((w) => Number(w.id) === numId)) ||
-          (state.userRatings && state.userRatings.some((r) => Number(r.id) === numId)) ||
-          (state.likedMedia && state.likedMedia.some((l) => Number(l.id) === numId)) ||
-          (state.dislikedMedia && state.dislikedMedia.some((d) => Number(d.id) === numId)) ||
-          (state.watchHistory && state.watchHistory.some((h) => Number(h.id) === numId))
+          (state.userRatings && state.userRatings.some((r) => Number(r.id) === numId))
         );
       },
 
       // Watchlist Implementation
       toggleWatchlist: (item) => {
+        let nextWatchlist: MediaItem[] = [];
         set((state) => {
           const exists = state.watchlist.some((m) => Number(m.id) === Number(item.id));
           if (exists) {
+            nextWatchlist = state.watchlist.filter((m) => Number(m.id) !== Number(item.id));
             return {
-              watchlist: state.watchlist.filter((m) => Number(m.id) !== Number(item.id)),
+              watchlist: nextWatchlist,
             };
           }
+          nextWatchlist = [item, ...state.watchlist.filter((m) => Number(m.id) !== Number(item.id))];
           return {
-            watchlist: [item, ...state.watchlist.filter((m) => Number(m.id) !== Number(item.id))],
+            watchlist: nextWatchlist,
           };
         });
         const state = get();
         import('../services/edgeSync').then((m) => {
-          m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
+          m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, nextWatchlist);
         }).catch(() => {});
       },
 
@@ -531,16 +590,21 @@ export const useStreamStore = create<StreamState>()(
       },
 
       removeFromWatchlist: (id) => {
-        set((state) => ({
-          watchlist: state.watchlist.filter((m) => Number(m.id) !== Number(id)),
-        }));
+        let nextWatchlist: MediaItem[] = [];
+        set((state) => {
+          nextWatchlist = state.watchlist.filter((m) => Number(m.id) !== Number(id));
+          return {
+            watchlist: nextWatchlist,
+          };
+        });
         const state = get();
         import('../services/edgeSync').then((m) => {
-          m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
+          m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, nextWatchlist);
         }).catch(() => {});
       },
 
       bulkAddToWatchlist: (items) => {
+        let updatedWatchlist: MediaItem[] = [];
         set((state) => {
           const map = new Map((state.watchlist || []).map((m) => [Number(m.id), m]));
           for (const item of items) {
@@ -561,7 +625,7 @@ export const useStreamStore = create<StreamState>()(
               });
             }
           }
-          const updatedWatchlist = Array.from(map.values());
+          updatedWatchlist = Array.from(map.values());
           return {
             watchlist: updatedWatchlist,
           };
@@ -569,7 +633,7 @@ export const useStreamStore = create<StreamState>()(
 
         const state = get();
         import('../services/edgeSync').then((m) => {
-          m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
+          m.syncToEdgeImmediately(state.watchHistory, state.likedMedia, state.userRatings, updatedWatchlist);
         }).catch(() => {});
       },
 
@@ -746,8 +810,8 @@ export const useStreamStore = create<StreamState>()(
                     });
                   }
                 } else {
-                  // 3 star to 4 star (3.0 <= rating < 4.0): unrated / neutral
-                  likesMap.delete(r.id);
+                  // 3 star to 4 star (3.0 <= rating < 4.0): neutral
+                  // Remove from dislikes if present, but NEVER delete explicit user likes!
                   dislikesMap.delete(r.id);
                 }
               }
@@ -893,6 +957,15 @@ export const useStreamStore = create<StreamState>()(
             watchedList: type === 'tv' ? (state.watchedList || []).filter((w) => w.id !== id) : state.watchedList,
           };
         });
+
+        try {
+          const state = get();
+          import('../services/edgeSync')
+            .then((m) => {
+              m.syncToEdge(state.watchHistory, state.likedMedia, state.userRatings, state.watchlist);
+            })
+            .catch(() => {});
+        } catch {}
       },
 
       getPlaybackProgress: (id, type, season, episode) => {
@@ -1051,91 +1124,32 @@ export const useStreamStore = create<StreamState>()(
           }
         }
 
-        // 2. From likedMedia
-        if (state.likedMedia && state.likedMedia.length > 0) {
-          for (const l of state.likedMedia) {
-            const numId = Number(l.id);
-            if (numId && !deletedIds.has(numId) && !watchedMap.has(numId)) {
-              watchedMap.set(numId, {
-                id: numId,
-                title: l.title,
-                overview: l.overview || '',
-                poster_path: l.poster_path,
-                backdrop_path: l.backdrop_path ?? null,
-                release_date: l.release_date || '',
-                vote_average: l.vote_average || 8.0,
-                media_type: l.media_type || 'movie',
-                genre_ids: l.genre_ids || [],
-              });
-            }
-          }
-        }
-
-        // 3. From dislikedMedia
-        if (state.dislikedMedia && state.dislikedMedia.length > 0) {
-          for (const d of state.dislikedMedia) {
-            const numId = Number(d.id);
-            if (numId && !deletedIds.has(numId) && !watchedMap.has(numId)) {
-              watchedMap.set(numId, {
-                id: numId,
-                title: d.title,
-                overview: d.overview || '',
-                poster_path: d.poster_path,
-                backdrop_path: d.backdrop_path ?? null,
-                release_date: d.release_date || '',
-                vote_average: d.vote_average || 8.0,
-                media_type: d.media_type || 'movie',
-                genre_ids: d.genre_ids || [],
-              });
-            }
-          }
-        }
-
-        // 4. From watchHistory
-        if (state.watchHistory && state.watchHistory.length > 0) {
-          for (const h of state.watchHistory) {
-            const numId = Number(h.id);
-            if (numId && !deletedIds.has(numId) && !watchedMap.has(numId)) {
-              watchedMap.set(numId, {
-                id: numId,
-                title: h.title,
-                overview: h.overview || '',
-                poster_path: h.poster_path,
-                backdrop_path: h.backdrop_path ?? null,
-                release_date: h.release_date || '',
-                vote_average: h.vote_average || 8.0,
-                media_type: h.type || 'movie',
-                genre_ids: (h as any).genre_ids || [],
-              });
-            }
-          }
-        }
-
         const syncedWatchedList = Array.from(watchedMap.values());
-        const allWatchedIds = new Set(syncedWatchedList.map((w) => Number(w.id)));
+        const watchedIdsSet = new Set(syncedWatchedList.map((w) => Number(w.id)));
 
-        // Clean watchHistory: strictly exclude dismissed items and any watched items (both movies & series)
+        // Clean watchHistory: strictly exclude dismissed items and explicitly completed/watched items
         state.watchedList = syncedWatchedList;
         state.dislikedMedia = state.dislikedMedia || [];
         state.watchlist = state.watchlist || [];
         state.likedMedia = state.likedMedia || [];
         state.watchHistory = (state.watchHistory || []).filter(
-          (h) => !dismissedIds.has(h.id) && !allWatchedIds.has(h.id) && ((h.progressSeconds && h.progressSeconds > 5) || (h.progress && h.progress > 0))
+          (h) => !dismissedIds.has(h.id) && !watchedIdsSet.has(Number(h.id)) && ((h.progressSeconds && h.progressSeconds > 5) || (h.progress && h.progress > 0))
         );
 
         // Synchronize ratings into likes/dislikes on rehydrate
         if (state.userRatings && state.userRatings.length > 0) {
-          const likesMap = new Map((state.likedMedia || []).map((l) => [l.id, l]));
-          const dislikesMap = new Map((state.dislikedMedia || []).map((d) => [d.id, d]));
+          const likesMap = new Map((state.likedMedia || []).map((l) => [Number(l.id), l]));
+          const dislikesMap = new Map((state.dislikedMedia || []).map((d) => [Number(d.id), d]));
 
           for (const r of state.userRatings) {
+            const numId = Number(r.id);
             const val = r.rating;
             if (val !== undefined && val !== null && !isNaN(val)) {
               if (val >= 4.0) {
-                dislikesMap.delete(r.id);
-                if (!likesMap.has(r.id)) {
-                  likesMap.set(r.id, {
-                    id: r.id,
+                dislikesMap.delete(numId);
+                if (!likesMap.has(numId)) {
+                  likesMap.set(numId, {
+                    id: numId,
                     title: r.title,
                     poster_path: r.poster_path ?? null,
                     backdrop_path: r.backdrop_path ?? null,
@@ -1146,24 +1160,26 @@ export const useStreamStore = create<StreamState>()(
                     overview: '',
                   });
                 }
-              } else if (val < 3.0) {
-                likesMap.delete(r.id);
-                if (!dislikesMap.has(r.id)) {
-                  dislikesMap.set(r.id, {
-                    id: r.id,
-                    title: r.title,
-                    poster_path: r.poster_path ?? null,
-                    backdrop_path: r.backdrop_path ?? null,
-                    release_date: r.release_date || '',
-                    vote_average: r.vote_average || 0,
-                    media_type: r.type,
-                    genre_ids: r.genre_ids || [],
-                    overview: '',
-                  });
+              } else if (val < 2.5) {
+                // Low ratings (< 2.5) qualify as disliked only if not explicitly liked
+                if (!likesMap.has(numId)) {
+                  if (!dislikesMap.has(numId)) {
+                    dislikesMap.set(numId, {
+                      id: numId,
+                      title: r.title,
+                      poster_path: r.poster_path ?? null,
+                      backdrop_path: r.backdrop_path ?? null,
+                      release_date: r.release_date || '',
+                      vote_average: r.vote_average || 0,
+                      media_type: r.type,
+                      genre_ids: r.genre_ids || [],
+                      overview: '',
+                    });
+                  }
                 }
               } else {
-                likesMap.delete(r.id);
-                dislikesMap.delete(r.id);
+                // Neutral ratings (2.5 to 3.5 stars): remove only from dislikes, NEVER delete explicit user likes!
+                dislikesMap.delete(numId);
               }
             }
           }

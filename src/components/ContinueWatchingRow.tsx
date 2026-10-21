@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { useStreamStore } from '../store/useStreamStore';
-import { NetflixBackdropCard } from './NetflixBackdropCard';
+import { NetflixTallCard } from './NetflixTallCard';
 import { getSavedPlaybackTime } from '../services/playbackStorage';
 import type { MediaItem } from '../types/movie';
 
@@ -38,7 +38,7 @@ export const ContinueWatchingRow: React.FC<ContinueWatchingRowProps> = ({ onSele
       <div className="relative">
         <div
           ref={rowRef}
-          className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none py-2 scroll-smooth"
+          className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto scrollbar-none py-10 sm:py-12 px-3 sm:px-6 -my-6 sm:-my-8 scroll-smooth"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {activeItems.map((histItem) => {
@@ -69,13 +69,20 @@ export const ContinueWatchingRow: React.FC<ContinueWatchingRowProps> = ({ onSele
                 ? Math.min(95, Math.max(5, Math.round((seconds / duration) * 100)))
                 : 0;
 
+            const episodeBadgeNode = episodeBadge ? (
+              <span className="bg-black/75 backdrop-blur-sm px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300 border border-white/10">
+                {episodeBadge}
+              </span>
+            ) : undefined;
+
             return (
-              <NetflixBackdropCard
+              <NetflixTallCard
                 key={`continue-${histItem.type}-${histItem.id}`}
                 item={mediaItem}
+                imageType="backdrop"
                 onSelect={onSelect}
                 progress={progress}
-                badge={episodeBadge}
+                badge={episodeBadgeNode}
                 onRemove={() => removeFromHistory(histItem.id)}
               />
             );
