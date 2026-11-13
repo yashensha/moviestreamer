@@ -1,5 +1,15 @@
 import { TMDB } from 'tmdb-ts';
-import type { MediaItem, Season, Episode, WatchHistoryItem, UserRatingItem, PersonItem, MultiSearchResult } from '../types/movie';
+import type {
+  MediaItem,
+  Season,
+  Episode,
+  WatchHistoryItem,
+  UserRatingItem,
+  PersonItem,
+  PersonCreditItem,
+  PersonDetails,
+  MultiSearchResult,
+} from '../types/movie';
 import { computeUnifiedInteractionMatrix } from './interactionMatrix';
 import { searchWithOrama, indexMediaItem } from './oramaSearch';
 
@@ -985,6 +995,98 @@ export const fetchPersonCombinedCredits = async (personId: number): Promise<Medi
     console.warn(`Failed to fetch credits for person #${personId}`, err);
   }
   return [];
+};
+
+// Fetch detailed person information (biography, birth, department, etc.)
+export const fetchPersonDetails = async (personId: number): Promise<PersonDetails | null> => {
+  try {
+    const url = `https://api.themoviedb.org/3/person/${personId}?api_key=${TMDB_API_KEY}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        id: data.id,
+        name: data.name,
+        biography: data.biography,
+        birthday: data.birthday,
+        deathday: data.deathday,
+        place_of_birth: data.place_of_birth,
+        profile_path: data.profile_path,
+        known_for_department: data.known_for_department,
+        also_known_as: data.also_known_as || [],
+        popularity: data.popularity,
+        imdb_id: data.imdb_id,
+        homepage: data.homepage,
+      };
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch details for person #${personId}`, err);
+  }
+  return null;
+};
+
+// Fetch person full credits preserving role/character and job
+export const fetchPersonFullCredits = async (
+  personId: number
+): Promise<{ cast: PersonCreditItem[]; crew: PersonCreditItem[] }> => {
+  try {
+    const url = `https://api.themoviedb.org/3/person/${personId}/combined_credits?api_key=${TMDB_API_KEY}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+
+      const parseCredit = (item: any): PersonCreditItem => ({
+        id: item.id,
+        title: item.title || item.name || 'Untitled',
+        original_title: item.original_title || item.original_name,
+        overview: item.overview || '',
+        poster_path: item.poster_path ?? null,
+        backdrop_path: item.backdrop_path ?? null,
+        release_date: item.release_date || item.first_air_date || '',
+        vote_average: item.vote_average || 0,
+        vote_count: item.vote_count || 0,
+        media_type: (item.media_type as 'movie' | 'tv') || 'movie',
+        genre_ids: item.genre_ids || [],
+        character: item.character || undefined,
+        job: item.job || undefined,
+        department: item.department || undefined,
+        credit_id: item.credit_id || undefined,
+      });
+
+      const rawCast: any[] = data.cast || [];
+      const rawCrew: any[] = data.crew || [];
+
+      // Deduplicate within cast and crew by id + role
+      const seenCast = new Set<string>();
+      const cast: PersonCreditItem[] = [];
+      for (const item of rawCast) {
+        if (!item.id || (!item.poster_path && !item.backdrop_path)) continue;
+        const key = `${item.id}-${item.character || ''}`;
+        if (seenCast.has(key)) continue;
+        seenCast.add(key);
+        cast.push(parseCredit(item));
+      }
+
+      const seenCrew = new Set<string>();
+      const crew: PersonCreditItem[] = [];
+      for (const item of rawCrew) {
+        if (!item.id || (!item.poster_path && !item.backdrop_path)) continue;
+        const key = `${item.id}-${item.job || ''}`;
+        if (seenCrew.has(key)) continue;
+        seenCrew.add(key);
+        crew.push(parseCredit(item));
+      }
+
+      // Sort by popularity / vote count
+      cast.sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
+      crew.sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
+
+      return { cast, crew };
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch full credits for person #${personId}`, err);
+  }
+  return { cast: [], crew: [] };
 };
 
 // Fetch TV Season details & episodes using tmdb-ts with fallback

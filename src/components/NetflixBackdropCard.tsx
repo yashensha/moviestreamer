@@ -48,13 +48,13 @@ export const NetflixBackdropCard: React.FC<NetflixBackdropCardProps> = ({
       className={`relative flex-shrink-0 group/card cursor-pointer select-none transition-all duration-300 hover:scale-105 hover:z-20 ${className}`}
       title={item.title}
     >
-      <div className="relative aspect-[16/9] w-full bg-zinc-900 rounded-[3px] overflow-hidden shadow-lg group-hover/card:shadow-2xl transition-all">
+      <div className="relative aspect-[16/9] w-full bg-zinc-900 rounded-[4px] overflow-hidden shadow-lg group-hover/card:shadow-2xl transition-all">
         {/* Backdrop Image */}
         <img
           src={backdrop}
           alt={item.title}
           loading="lazy"
-          className="w-full h-full object-cover brightness-[0.92] group-hover/card:brightness-105 transition-all duration-500"
+          className="w-full h-full object-cover rounded-[4px] brightness-[0.92] group-hover/card:brightness-105 transition-all duration-500"
         />
 
         {/* Center Hover Play Icon Indicator */}

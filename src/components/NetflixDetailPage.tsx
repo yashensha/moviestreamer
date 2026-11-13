@@ -479,7 +479,6 @@ export const NetflixDetailPage: React.FC = () => {
                     <Button
                       variant="primary"
                       size="lg"
-                      rounded="full"
                       onClick={() => handlePlay()}
                       leftIcon={<Play className="w-5 h-5 fill-black" />}
                     >

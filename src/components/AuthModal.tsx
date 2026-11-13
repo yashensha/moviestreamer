@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Mail, Lock, User, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { SevenLogo } from './SevenLogo';
 
 export const AuthModal: React.FC = () => {
   const {
@@ -63,11 +64,11 @@ export const AuthModal: React.FC = () => {
       />
 
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-md bg-[#161616] border border-zinc-800 shadow-2xl p-6 sm:p-8 z-10 text-white animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-md bg-[#161616] border border-zinc-800 rounded-[4px] shadow-2xl p-6 sm:p-8 z-10 text-white animate-in fade-in zoom-in-95 duration-200">
         {/* Close Button */}
         <button
           onClick={closeAuthModal}
-          className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1 transition cursor-pointer"
+          className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1 rounded-[4px] transition cursor-pointer"
           title="Close"
         >
           <X className="w-5 h-5" />
@@ -75,9 +76,10 @@ export const AuthModal: React.FC = () => {
 
         {/* Brand Header */}
         <div className="mb-6">
-          <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-xl font-black tracking-tighter text-[#E50914]">
-              MOVIE<span className="text-white ml-0.5">WATCHER</span>
+          <div className="flex items-center gap-2 mb-2">
+            <SevenLogo className="h-6 w-auto drop-shadow-[0_2px_12px_rgba(229,9,20,0.35)]" />
+            <span className="text-xl font-black tracking-tight text-white">
+              SEVEN
             </span>
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-white">
@@ -92,7 +94,7 @@ export const AuthModal: React.FC = () => {
 
         {/* Error notification */}
         {error && (
-          <div className="mb-5 p-3 bg-red-950/70 border border-red-800/80 rounded-none flex items-start gap-2.5 text-xs text-red-200">
+          <div className="mb-5 p-3 bg-red-950/70 border border-red-800/80 rounded-[4px] flex items-start gap-2.5 text-xs text-red-200">
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
@@ -112,7 +114,7 @@ export const AuthModal: React.FC = () => {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Alex"
-                  className="w-full bg-zinc-900/90 border border-zinc-700 focus:border-white focus:outline-none pl-9 pr-3 py-2.5 text-sm text-white placeholder-zinc-500 transition"
+                  className="w-full bg-zinc-900/90 border border-zinc-700 rounded-[4px] focus:border-white focus:outline-none pl-9 pr-3 py-2.5 text-sm text-white placeholder-zinc-500 transition"
                 />
               </div>
             </div>
@@ -130,7 +132,7 @@ export const AuthModal: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full bg-zinc-900/90 border border-zinc-700 focus:border-white focus:outline-none pl-9 pr-3 py-2.5 text-sm text-white placeholder-zinc-500 transition"
+                className="w-full bg-zinc-900/90 border border-zinc-700 rounded-[4px] focus:border-white focus:outline-none pl-9 pr-3 py-2.5 text-sm text-white placeholder-zinc-500 transition"
               />
             </div>
           </div>
@@ -148,7 +150,7 @@ export const AuthModal: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="At least 6 characters"
-                className="w-full bg-zinc-900/90 border border-zinc-700 focus:border-white focus:outline-none pl-9 pr-10 py-2.5 text-sm text-white placeholder-zinc-500 transition"
+                className="w-full bg-zinc-900/90 border border-zinc-700 rounded-[4px] focus:border-white focus:outline-none pl-9 pr-10 py-2.5 text-sm text-white placeholder-zinc-500 transition"
               />
               <button
                 type="button"
@@ -164,7 +166,7 @@ export const AuthModal: React.FC = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full mt-2 py-3 bg-[#E50914] hover:bg-[#c90812] active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed font-semibold text-sm text-white tracking-wide transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-rose-900/30"
+            className="w-full mt-2 py-3 bg-[#E50914] hover:bg-[#c90812] rounded-[4px] active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed font-semibold text-sm text-white tracking-wide transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-rose-900/30"
           >
             {isLoading ? (
               <>

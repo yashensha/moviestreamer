@@ -13,6 +13,7 @@ import { TailoredRecommendationsRow } from './components/TailoredRecommendations
 import { NetflixDetailPage } from './components/NetflixDetailPage';
 import { VideoPlayerModal } from './components/VideoPlayerModal';
 import { SearchResults } from './components/SearchResults';
+import { PersonDetailPage } from './components/PersonDetailPage';
 import { ProfilePage } from './components/ProfilePage';
 import { AuthModal } from './components/AuthModal';
 import { ContinueWatchingRow } from './components/ContinueWatchingRow';
@@ -594,6 +595,10 @@ export function App() {
         <Route
           path="/movie/:id"
           element={<NetflixDetailPage key={location.pathname} />}
+        />
+        <Route
+          path="/person/:id"
+          element={<PersonDetailPage key={location.pathname} />}
         />
         <Route
           path="/watch/:type/:id"

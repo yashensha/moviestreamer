@@ -18,6 +18,7 @@ export interface NetflixTallCardProps {
   item: MediaItem;
   onSelect: (item: MediaItem) => void;
   onPlay?: (item: MediaItem) => void;
+  role?: string;
   imageType?: 'backdrop' | 'poster';
   className?: string;
   isWatchedCard?: boolean;
@@ -36,6 +37,7 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
   item,
   onSelect,
   onPlay,
+  role,
   imageType = 'backdrop',
   className = 'w-36 sm:w-44 md:w-52 lg:w-56',
   isWatchedCard,
@@ -162,6 +164,14 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
     return null;
   }, [item.media_type, item.number_of_seasons, item.runtime, quickInfo]);
 
+  // Clean 4-digit release year (e.g. 2024)
+  const year = useMemo(() => {
+    const rawDate = item.release_date || (item as any).first_air_date;
+    if (!rawDate) return null;
+    const y = String(rawDate).slice(0, 4);
+    return isNaN(Number(y)) ? null : y;
+  }, [item.release_date, (item as any).first_air_date]);
+
   // Dot-separated tags
   const tags = useMemo(() => {
     if (item.genres && item.genres.length > 0) {
@@ -186,17 +196,17 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
   return (
     <div
       onClick={() => onSelect(item)}
-      className={`relative flex-shrink-0 group/card cursor-pointer select-none transition-all duration-300 ease-out hover:scale-110 sm:hover:scale-112 hover:-translate-y-1.5 hover:z-40 first:hover:origin-left last:hover:origin-right hover:origin-center ${className}`}
+      className={`relative flex-shrink-0 group/card cursor-pointer select-none transition-all duration-300 ease-out hover:scale-105 sm:hover:scale-108 hover:-translate-y-1 hover:z-40 first:hover:origin-left last:hover:origin-right hover:origin-center ${className}`}
       title={item.title}
     >
-      {/* Tall Card Container (Aspect 2/3) - SHARP EDGES (rounded-none), NO BORDER OUTLINE */}
-      <div className="relative aspect-[2/3] w-full bg-zinc-900 rounded-none overflow-hidden shadow-lg group-hover/card:shadow-2xl group-hover/card:shadow-black/95 border-0 transition-all duration-300">
+      {/* Tall Card Container (Aspect 2/3) - Disciplined 4px radius, no border outline */}
+      <div className="relative aspect-[2/3] w-full bg-zinc-900 rounded-[4px] overflow-hidden shadow-lg group-hover/card:shadow-2xl group-hover/card:shadow-black/95 border-0 transition-all duration-300">
         {/* Cover Artwork Image */}
         <img
           src={cardImage}
           alt={item.title}
           loading="lazy"
-          className="w-full h-full object-cover rounded-none brightness-[0.92] group-hover/card:brightness-105 transition-all duration-500"
+          className="w-full h-full object-cover rounded-[4px] brightness-[0.92] group-hover/card:brightness-105 transition-all duration-500"
         />
 
         {/* Optional Custom Badge Overlay (Solid number with Netflix bold font and outline, no box) */}
@@ -395,15 +405,23 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
           </div>
 
           {/* Hovering shows written title, just like we did in home page */}
-          <h4 className="font-extrabold text-xs sm:text-sm text-white tracking-tight leading-snug line-clamp-2 drop-shadow-md mb-1">
+          <h4 className="font-extrabold text-xs sm:text-sm text-white tracking-tight leading-snug line-clamp-2 drop-shadow-md mb-0.5">
             {item.title}
           </h4>
 
-          {/* Metadata Line: Match %, Age Rating Badge, Seasons/Duration */}
-          <div className="flex items-center gap-1.5 text-[11px] mt-0.5 flex-wrap">
+          {/* Role subtitle in hover drawer */}
+          {role && (
+            <p className="text-[11px] text-zinc-300 font-medium line-clamp-1 drop-shadow-sm mb-1">
+              {role}
+            </p>
+          )}
+
+          {/* Metadata Line: Match %, Year, Age Rating Badge, Seasons/Duration */}
+          <div className="flex items-center gap-1.5 text-[11px] mt-1 flex-wrap">
             <span className="text-emerald-400 font-bold">{matchScore}</span>
+            {year && <span className="text-zinc-300 font-semibold">{year}</span>}
             {certification && (
-              <span className="border border-zinc-600 text-[10px] px-1 py-0.2 rounded-none font-semibold text-zinc-300">
+              <span className="border border-zinc-500/80 text-[10px] px-1 py-0.5 rounded-[2px] font-semibold text-zinc-300 leading-none">
                 {certification}
               </span>
             )}
@@ -414,15 +432,17 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
             )}
           </div>
 
-          {/* Dot-separated Genre/Subgenre Tags */}
-          <div className="text-[10px] text-zinc-300 font-medium truncate mt-1 flex items-center gap-1 opacity-90">
-            {tags.map((tag, i) => (
-              <React.Fragment key={tag}>
-                {i > 0 && <span className="text-zinc-500 text-[8px]">•</span>}
-                <span>{tag}</span>
-              </React.Fragment>
-            ))}
-          </div>
+          {/* Clean Dot-separated Primary Genre Tags */}
+          {tags.length > 0 && (
+            <div className="text-[10px] text-zinc-400 font-medium truncate mt-1 flex items-center gap-1">
+              {tags.slice(0, 2).map((tag, i) => (
+                <React.Fragment key={tag}>
+                  {i > 0 && <span className="text-zinc-600 text-[8px]">•</span>}
+                  <span>{tag}</span>
+                </React.Fragment>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

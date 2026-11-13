@@ -304,7 +304,6 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
             <Button
               variant="primary"
               size="lg"
-              rounded="full"
               onClick={() =>
                 onPlay({
                   ...currentItem,
@@ -324,7 +323,6 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
             <Button
               variant="secondary"
               size="lg"
-              rounded="full"
               onClick={() => onMoreInfo(currentItem)}
               leftIcon={<Info className="w-5 h-5" />}
             >

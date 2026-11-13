@@ -23,11 +23,17 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
 }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const openLoginModal = useAuthStore((state) => state.openLoginModal);
+
+  // Close mobile menu on location change
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   const currentTab =
     location.pathname.startsWith('/my-list')
@@ -57,9 +63,15 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
       if (tag === 'INPUT' || tag === 'TEXTAREA') {
         if (e.key === 'Escape') {
           setIsSearchOpen(false);
+          setIsMobileMenuOpen(false);
           searchInputRef.current?.blur();
         }
         return;
+      }
+
+      if (e.key === 'Escape') {
+        setIsSearchOpen(false);
+        setIsMobileMenuOpen(false);
       }
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -86,6 +98,7 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
   };
 
   const handleNav = (tab: 'home' | 'tv' | 'movie' | 'history' | 'profile' | 'watchlist', path: string) => {
+    setIsMobileMenuOpen(false);
     onSelectTab?.(tab as any);
     onSearchChange('');
     navigate(path);
@@ -114,7 +127,7 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
         }`}
       >
         {/* Left Side: Brand Logo + Primary Nav Links */}
-        <div className="flex items-center gap-5 lg:gap-9">
+        <div className="flex items-center gap-3 sm:gap-5 lg:gap-9">
           {/* SEVEN Brand Logo */}
           <button
             onClick={() => handleNav('home', '/')}
@@ -123,6 +136,22 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
             title="SEVEN"
           >
             <SevenLogo className="h-5 sm:h-6 md:h-7 w-auto group-hover:scale-105 transition-transform duration-200 drop-shadow-[0_2px_12px_rgba(229,9,20,0.35)]" />
+          </button>
+
+          {/* Mobile "Browse" Trigger Button (Authentic Netflix Mobile UX) */}
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden flex items-center gap-1 text-xs font-semibold text-zinc-200 hover:text-white transition focus:outline-none cursor-pointer px-2 py-1 rounded-[4px] bg-white/5 border border-white/10"
+            aria-label="Toggle Browse Menu"
+            aria-expanded={isMobileMenuOpen}
+          >
+            <span>Browse</span>
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                isMobileMenuOpen ? 'rotate-180' : ''
+              }`}
+            />
           </button>
 
           {/* Navigation Links (Matching Netflix UI layout exactly) */}
@@ -238,7 +267,7 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
               title={`Profile: ${user.name || user.email}`}
             >
               <div
-                className={`w-6 h-6 md:w-7 md:h-7 rounded-[3px] bg-[#E50914] flex items-center justify-center text-white text-[11px] font-bold uppercase transition-transform group-hover:scale-105 shadow ${
+                className={`w-6 h-6 md:w-7 md:h-7 rounded-[4px] bg-[#E50914] flex items-center justify-center text-white text-[11px] font-bold uppercase transition-transform group-hover:scale-105 shadow ${
                   currentTab === 'profile' ? 'ring-2 ring-white' : ''
                 }`}
               >
@@ -252,7 +281,7 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
               className="flex items-center gap-1.5 focus:outline-none cursor-pointer group"
               title="Sign In / Profile"
             >
-              <div className="w-6 h-6 md:w-7 md:h-7 rounded-[3px] bg-[#E50914] flex items-center justify-center text-white text-[10px] font-black uppercase transition-transform group-hover:scale-105 shadow">
+              <div className="w-6 h-6 md:w-7 md:h-7 rounded-[4px] bg-[#E50914] flex items-center justify-center text-white text-[10px] font-black uppercase transition-transform group-hover:scale-105 shadow">
                 7
               </div>
               <ChevronDown className="w-3 h-3 text-zinc-300 group-hover:text-white transition-transform duration-200 group-hover:rotate-180" />
@@ -260,6 +289,78 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
           )}
         </div>
       </header>
+
+      {/* Mobile Slide-Down Navigation Menu */}
+      {isMobileMenuOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="md:hidden fixed inset-0 top-12 bg-black/60 backdrop-blur-xs z-30"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+
+          {/* Menu Drawer */}
+          <div className="md:hidden relative bg-black/95 backdrop-blur-xl border-b border-zinc-800 shadow-2xl z-40 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex flex-col py-3 px-6 space-y-1 text-sm font-medium">
+              <button
+                type="button"
+                onClick={() => handleNav('home', '/')}
+                className={`py-2.5 text-left transition cursor-pointer ${
+                  currentTab === 'home' && !searchQuery
+                    ? 'text-white font-bold border-l-2 border-[#E50914] pl-3'
+                    : 'text-zinc-400 hover:text-white pl-3.5'
+                }`}
+              >
+                Home
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNav('tv', '/series')}
+                className={`py-2.5 text-left transition cursor-pointer ${
+                  currentTab === 'tv' && !searchQuery
+                    ? 'text-white font-bold border-l-2 border-[#E50914] pl-3'
+                    : 'text-zinc-400 hover:text-white pl-3.5'
+                }`}
+              >
+                TV Shows
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNav('movie', '/movies')}
+                className={`py-2.5 text-left transition cursor-pointer ${
+                  currentTab === 'movie' && !searchQuery
+                    ? 'text-white font-bold border-l-2 border-[#E50914] pl-3'
+                    : 'text-zinc-400 hover:text-white pl-3.5'
+                }`}
+              >
+                Movies
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNav('top-rated' as any, '/top-rated')}
+                className={`py-2.5 text-left transition cursor-pointer ${
+                  currentTab === 'top-rated' && !searchQuery
+                    ? 'text-white font-bold border-l-2 border-[#E50914] pl-3'
+                    : 'text-zinc-400 hover:text-white pl-3.5'
+                }`}
+              >
+                Top Rated
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNav('watchlist', '/my-list')}
+                className={`py-2.5 text-left transition cursor-pointer ${
+                  currentTab === 'watchlist' && !searchQuery
+                    ? 'text-white font-bold border-l-2 border-[#E50914] pl-3'
+                    : 'text-zinc-400 hover:text-white pl-3.5'
+                }`}
+              >
+                My List
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

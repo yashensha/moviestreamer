@@ -25,17 +25,18 @@ export const buttonVariants = cva(
         icon: 'w-10 h-10 p-0',
       },
       rounded: {
+        default: 'rounded-[4px]',
+        sm: 'rounded-[2px]',
+        md: 'rounded-[4px]',
+        lg: 'rounded-[6px]',
         full: 'rounded-full',
-        lg: 'rounded-2xl',
-        md: 'rounded-xl',
-        sm: 'rounded-lg',
         none: 'rounded-none',
       },
     },
     defaultVariants: {
       variant: 'primary',
       size: 'lg',
-      rounded: 'full',
+      rounded: 'default',
     },
   }
 );

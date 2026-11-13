@@ -133,6 +133,28 @@ export interface PersonItem {
   known_for?: MediaItem[];
 }
 
+export interface PersonCreditItem extends MediaItem {
+  character?: string;
+  job?: string;
+  department?: string;
+  credit_id?: string;
+}
+
+export interface PersonDetails {
+  id: number;
+  name: string;
+  biography?: string;
+  birthday?: string | null;
+  deathday?: string | null;
+  place_of_birth?: string | null;
+  profile_path: string | null;
+  known_for_department?: string;
+  also_known_as?: string[];
+  popularity?: number;
+  imdb_id?: string;
+  homepage?: string | null;
+}
+
 export interface MultiSearchResult {
   media: MediaItem[];
   people: PersonItem[];

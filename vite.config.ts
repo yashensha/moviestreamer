@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => {
       ...(useLocalDb ? [viteDevApiPlugin()] : []),
     ],
     server: {
+      host: true,
       proxy: useLocalDb
         ? undefined
         : {

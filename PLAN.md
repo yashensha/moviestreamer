@@ -1,27 +1,33 @@
-# Orama Instant Search Integration Plan
+# Person / Crew Profile Page & Search Modernization Mockup Plan
 
 ## Objective
-Implement an in-memory, ultra-fast (<2ms), typo-tolerant search engine using Orama that searches movies, TV shows, genres, and themes with graceful fallback to TMDB for unindexed items.
+Unslop and modernize the Search and Person experience into a top-tier cinematic interface:
+1. Provide a dedicated, shareable route `/person/:id`.
+2. Display rich profile hero (portrait, biography, department, career metrics).
+3. Showcase filmography with explicit role display ("what they played in that movie", e.g. character name for actors, job title for directors/crew).
+4. Upgrade the Search page layout from a plain forum-style list into a modern, cinematic experience.
 
 ---
 
 ## Tasks
 
-- [x] **Task 1: Install Orama dependencies**
-  - Install `@orama/orama` package.
-  - Verify package installation and lockfile integrity.
+- [x] **Task 1: Add Person Types & TMDB API Endpoints**
+  - Define `PersonDetails` and `PersonCreditItem` in `src/types/movie.ts` (including `character`, `job`, `department`).
+  - Implement `fetchPersonDetails` and enhance `fetchPersonCredits` in `src/services/tmdb.ts`.
 
-- [x] **Task 2: Build Orama search service (`src/services/oramaSearch.ts`)**
-  - Define Orama database schema (id, title, original_title, overview, genres, themes, nanogenres, media_type, poster_path, vote_average, popularity).
-  - Implement asynchronous lazy initialization and index caching (IndexedDB/in-memory).
-  - Seed index using curated lists, popular titles, and rich theme data.
-  - Export fast search function supporting typo tolerance, exact matching, and theme filters.
+- [x] **Task 2: Build the Cinematic Person Profile Page (`src/components/PersonDetailPage.tsx`)**
+  - Create atmospheric hero with high-res portrait, biography, department badges, and career stats.
+  - Add department tabs (All, Acting, Directing/Crew) and sorting (Popularity, Year).
+  - Render filmography cards displaying character played (*"as [Character]"*) or crew role (*"[Job]"*).
 
-- [x] **Task 3: Integrate Orama with search pipeline & TMDB fallback**
-  - Update `multiSearchWithTMDB` in `src/services/tmdb.ts` (or unify search service) to query Orama first.
-  - Return instant Orama hits when available (>= 4 matches).
-  - Transparently fall back to TMDB API if query yields insufficient local matches.
+- [x] **Task 3: Wire `/person/:id` Route & Search Navigation**
+  - Register `/person/:id` route in `src/App.tsx`.
+  - Connect person cards in `SearchResults.tsx` to navigate to `/person/${person.id}`.
 
-- [x] **Task 4: Typecheck, Lint, and End-to-End Verification**
+- [x] **Task 4: Modernize Search Results UI (`src/components/SearchResults.tsx`)**
+  - Replace plain forum pills with modern glass tabs and live counts.
+  - Upgrade Cast & Crew spotlight into modern portrait cards with character/department highlights.
+  - Ensure 4px geometry and consistent streaming aesthetic.
+
+- [x] **Task 5: Lint, Typecheck, and Verification**
   - Run `oxlint` and `tsc --noEmit`.
-  - Validate search responsiveness and typo handling.
