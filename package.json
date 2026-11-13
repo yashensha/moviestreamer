@@ -13,6 +13,7 @@
     "d1:local": "wrangler d1 execute moviewatcher-db --local --file=./schema.sql"
   },
   "dependencies": {
+    "@orama/orama": "^3.1.18",
     "@tailwindcss/vite": "^4.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

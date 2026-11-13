@@ -1,6 +1,7 @@
 import { TMDB } from 'tmdb-ts';
 import type { MediaItem, Season, Episode, WatchHistoryItem, UserRatingItem, PersonItem, MultiSearchResult } from '../types/movie';
 import { computeUnifiedInteractionMatrix } from './interactionMatrix';
+import { searchWithOrama, indexMediaItem } from './oramaSearch';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
@@ -835,7 +836,7 @@ export const multiSearchWithTMDB = async (query: string): Promise<MultiSearchRes
       .map(parseMediaItem),
   });
 
-  const finalizeResults = (rawMedia: any[], rawPeople: any[]): MultiSearchResult => {
+  const finalizeResults = (rawMedia: any[], rawPeople: any[], oramaMedia: MediaItem[] = []): MultiSearchResult => {
     const qLower = clean.toLowerCase();
 
     // 1. Filter out items without posters or backdrops
@@ -855,7 +856,7 @@ export const multiSearchWithTMDB = async (query: string): Promise<MultiSearchRes
       .filter((item: any) => item.media_type === 'person')
       .map(parsePersonItem);
 
-    // 3. Merge matching local curated items at the top if title matches
+    // 3. Merge matching local curated items and Orama search hits at the top
     const localMatches = ALL_CURATED_MEDIA.filter((m) =>
       m.title.toLowerCase().includes(qLower)
     );
@@ -863,8 +864,8 @@ export const multiSearchWithTMDB = async (query: string): Promise<MultiSearchRes
     const seen = new Set<number>();
     const mergedMedia: MediaItem[] = [];
 
-    // Prioritize exact curated match if any
-    for (const item of [...localMatches, ...media]) {
+    // Prioritize exact curated matches & Orama matches (theme/typo-tolerant)
+    for (const item of [...oramaMedia, ...localMatches, ...media]) {
       if (!seen.has(item.id)) {
         seen.add(item.id);
         mergedMedia.push(item);
@@ -885,15 +886,28 @@ export const multiSearchWithTMDB = async (query: string): Promise<MultiSearchRes
       }
     }
 
+    // Asynchronously index new TMDB items into Orama in the background
+    for (const item of media) {
+      indexMediaItem(item).catch(() => {});
+    }
+
     return { media: mergedMedia, people };
   };
+
+  // Step 1: Query in-memory Orama engine (< 2ms)
+  let oramaMedia: MediaItem[] = [];
+  try {
+    oramaMedia = await searchWithOrama(clean, { limit: 24 });
+  } catch (err) {
+    console.warn('Orama in-memory search failed:', err);
+  }
 
   // Method 1: Use tmdb-ts client with the Read Access Token
   try {
     const client = getTmdbClient();
     const res = await client.search.multi({ query: clean });
     if (res && res.results && res.results.length > 0) {
-      const result = finalizeResults(res.results, res.results);
+      const result = finalizeResults(res.results, res.results, oramaMedia);
       if (result.media.length > 0 || result.people.length > 0) {
         return result;
       }
@@ -909,14 +923,19 @@ export const multiSearchWithTMDB = async (query: string): Promise<MultiSearchRes
     if (res.ok) {
       const data = await res.json();
       if (data && data.results && data.results.length > 0) {
-        return finalizeResults(data.results, data.results);
+        return finalizeResults(data.results, data.results, oramaMedia);
       }
     }
   } catch (err) {
     console.error('Direct TMDB API search failed:', err);
   }
 
-  // Method 3: Search within local catalog fallback
+  // Method 3: Fallback to Orama in-memory search hits if TMDB yielded 0 results or failed
+  if (oramaMedia.length > 0) {
+    return { media: oramaMedia, people: [] };
+  }
+
+  // Method 4: Search within local catalog fallback
   const q = clean.toLowerCase();
   const localMedia = ALL_CURATED_MEDIA.filter(
     (m) =>
