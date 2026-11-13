@@ -20,19 +20,21 @@ Major streaming platforms (like Netflix, Amazon Prime, and Disney+) optimize the
 **MovieWatcher** fundamentally rethinks media exploration by putting artistic merit and viewer autonomy first:
 
 1. **Unbiased Community Curation:** Directly aggregates data from **Letterboxd** (the world's premier cinephile community) and **TMDB**, giving you access to real human reviews, themes, and curated rankings.
-2. **Thematic Vibe & Nanogenre Matching:** Replaces blunt genre labels (*"Action"*, *"Comedy"*) with rich, nuanced cinematic DNA (*"Mind-Bending Dream Heist"*, *"Slow-Burn Gothic Noir"*, *"Neon Cyberpunk Dystopia"*).
-3. **Pluggable Player Architecture:** Decouples content discovery from closed distribution networks. Users can connect any stream source or embed provider of their choice (such as Vidbolt or self-hosted media servers).
+2. **Zero Cold-Start Personalization via Letterboxd CSV:** You don't start from scratch. Upload your exported `ratings.csv` or `watchlist.csv` to instantly calibrate recommendations to your lifetime movie taste.
+3. **Thematic Vibe & Nanogenre Matching:** Replaces blunt genre labels (*"Action"*, *"Comedy"*) with rich, nuanced cinematic DNA (*"Mind-Bending Dream Heist"*, *"Slow-Burn Gothic Noir"*, *"Neon Cyberpunk Dystopia"*).
+4. **Pluggable Player Architecture:** Decouples content discovery from closed distribution networks. Users can connect any stream source or embed provider of their choice (such as Vidbolt or self-hosted media servers).
 
 ---
 
 ## 👤 Discovery Grounding: Built with Real Cinephiles
 
-Through structured interviews with film enthusiasts and heavy streaming viewers, we identified three core frustrations that direct our product roadmap:
+Through structured interviews with film enthusiasts and heavy streaming viewers, we identified four core frustrations that direct our product roadmap:
 
-> *"I'm tired of Netflix recommending 5 mediocre originals in a row just because they made them. Show me what film lovers on Letterboxd and IMDb actually consider the greatest of all time."*  
+> *"I'm tired of Netflix recommending 5 mediocre originals in a row just because they made them. Show me what film lovers on Letterboxd and IMDb actually consider the greatest of all time—and let me bring my Letterboxd ratings so the algorithm immediately knows what I love."*  
 > — **Direct Cinephile User Interview**
 
 ### Key Needs Identified:
+* **Letterboxd Ratings & Watchlist Portability:** Ability to import personal Letterboxd CSV exports (`ratings.csv`, `watchlist.csv`) to instantly generate customized recommendations and a playable streaming queue without manual data entry.
 * **Letterboxd Top 500 & IMDb Top 200 Hubs:** Instant access to community-ranked best pictures and top-rated television series without platform bias.
 * **Director & Actor Centric Discovery:** The ability to search a creator (e.g., *Christopher Nolan*, *Denis Villeneuve*, *Bong Joon-ho*, *Anya Taylor-Joy*) and explore their complete chronological filmography across cast and crew credits.
 * **Instant, Typo-Tolerant Search:** Search that understands misspellings (*"intrestelar"* $\rightarrow$ *Interstellar*) and thematic vibes (*"rainy vampire mystery"*), returning results in milliseconds.
@@ -41,25 +43,32 @@ Through structured interviews with film enthusiasts and heavy streaming viewers,
 
 ## 🌟 Key Features
 
-### 1. 🏆 Letterboxd Top 500 & IMDb Top 200 Catalogs
+### 1. 📥 Instant Letterboxd CSV Import (Zero Cold-Start Personalization)
+* **Drag-and-Drop Portability:** Bring your entire film history with you. Simply export your data from Letterboxd and drop in your `.csv` files:
+  * **`ratings.csv` / `watched.csv`**: Ingests hundreds or thousands of your personal ratings. Instantly trains the **Taste DNA Engine**—5★ ratings become heavy affinity seeds, while 1★–2★ ratings act as negative hard-filters that purge disliked tropes from your recommendations.
+  * **`watchlist.csv`**: Converts your stagnant Letterboxd queue into an interactive, playable streaming hub complete with posters, backdrops, and progress tracking.
+* **Intelligent Title Resolution:** Automatically maps Letterboxd slugs, titles, and release years to verified TMDB IDs with automated batching and fuzzy reconciliation.
+* **Persistent Edge Sync:** Persists your imported ratings and watchlist to **Cloudflare D1**, seamlessly syncing across your devices.
+
+### 2. 🏆 Letterboxd Top 500 & IMDb Top 200 Catalogs
 * **Curated Top-Rated Hub:** Dedicated views for the **Letterboxd Top 500 Greatest Films of All Time** and **IMDb Top 200 Television Series**.
 * **Prestige Badges:** Instant visual indicators showing rank standing, IMDb scores, and Letterboxd accolades on hover cards and detail views.
 
-### 2. ⚡ In-Memory Instant & Typo-Tolerant Search (Powered by Orama)
+### 3. ⚡ In-Memory Instant & Typo-Tolerant Search (Powered by Orama)
 * **Sub-2ms Keystroke Evaluation:** Uses [@orama/orama](https://github.com/oramasearch/orama) running directly in-memory with zero server bottlenecks.
-* **Fuzzy Levenshtein Typo Tolerance:** Automatically resolves misspellings without returning dead-end empty states.
+* **Fuzzy Levenshtein Typo Tolerance:** Automatically resolves misspellings without returning dead-end empty states (*"intrestelar"* $\rightarrow$ *Interstellar*).
 * **Thematic & Vibe Retrieval:** Querying atmospheric descriptors like *"cyberpunk"*, *"space exploration"*, or *"vampire"* surfaces relevant titles based on curated tag metadata.
 * **Seamless TMDB Fallback:** Long-tail or obscure queries transparently fall back to TMDB's global multi-search.
 
-### 3. 🎬 Creator & Filmography Exploration
+### 4. 🎬 Creator & Filmography Exploration
 * **Entity-Aware Multi-Search:** Searches across Movies, TV Series, Directors, and Actors simultaneously.
 * **Dedicated Person Filmography:** Clicking any cast or crew member opens their complete, chronological portfolio of works, allowing deep director-led marathons.
 
-### 4. 🧬 Personalized Taste DNA Engine
+### 5. 🧬 Personalized Taste DNA Engine
 * **Multimodal Affinity Scoring:** Dynamically weights your preferences across genre affinities, Letterboxd CSV star ratings, and watch dwell times.
 * **Smart Negative Filtering:** Hard-filters titles you've rated 1★ or 2★ on Letterboxd, ensuring recommendations never push disliked styles.
 
-### 5. 📺 Immersive Netflix-Grade Theater Experience
+### 6. 📺 Immersive Netflix-Grade Theater Experience
 * **Cinematic Billboard & Carousels:** High-contrast `#141414` canvas, responsive hero banners with clean logos, and smooth horizontal rails.
 * **Episode Hub & Auto-Resume:** Tracks your active season/episode progression and automatically loads your last streamed timestamp.
 
@@ -141,11 +150,12 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 ## 🗺️ Product Roadmap
 
 - [x] **Phase 1: Cinema Discovery Foundation** (Curated Letterboxd Top 500, IMDb Top 200, Netflix-style billboard and rails).
-- [x] **Phase 2: In-Memory Orama Engine** (Sub-2ms instant typo-tolerant search and thematic vibe filtering).
-- [x] **Phase 3: Multi-Entity Filmography Hub** (Actor & director search with dedicated full-credits portfolio views).
-- [ ] **Phase 4: Deep Crew & Department Tagging** (Filter films by Cinematographers [e.g. *Roger Deakins*], Composers [e.g. *Hans Zimmer*], and Screenwriters).
-- [ ] **Phase 5: Automated Letterboxd Watchlist Sync** (Direct profile scraping or OAuth token sync for live updates).
-- [ ] **Phase 6: Personal Cinematic Time Capsule** (Annual & monthly viewing rhythm analytics, genre affinities, and streaming dwell time breakdown).
+- [x] **Phase 2: Letterboxd CSV Importer** (Automated batch resolution of `ratings.csv` and `watchlist.csv` with instant Taste DNA calibration).
+- [x] **Phase 3: In-Memory Orama Engine** (Sub-2ms instant typo-tolerant search and thematic vibe filtering).
+- [x] **Phase 4: Multi-Entity Filmography Hub** (Actor & director search with dedicated full-credits portfolio views).
+- [ ] **Phase 5: Deep Crew & Department Tagging** (Filter films by Cinematographers [e.g. *Roger Deakins*], Composers [e.g. *Hans Zimmer*], and Screenwriters).
+- [ ] **Phase 6: Automated Letterboxd Account Sync** (Direct profile scraping or OAuth token sync for live background updates).
+- [ ] **Phase 7: Personal Cinematic Time Capsule** (Annual & monthly viewing rhythm analytics, genre affinities, and streaming dwell time breakdown).
 
 ---
 
