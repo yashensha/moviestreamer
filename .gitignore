@@ -16,6 +16,10 @@ out/
 *.local
 .dev-db.json
 
+# Cloudflare Wrangler & local dev state
+.wrangler/
+.mf/
+
 # Logs
 logs/
 *.log
@@ -57,3 +61,12 @@ coverage/
 .browser_profile/
 scripts/.browser_profile/
 scripts/sample_genres_page.html
+
+# Reference datasets & training data
+training/
+
+# Backups & temp files
+*.bak
+*.tmp
+*.sqlite-shm
+*.sqlite-wal
