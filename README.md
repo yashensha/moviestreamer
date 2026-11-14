@@ -64,13 +64,130 @@ Through structured interviews with film enthusiasts and heavy streaming viewers,
 * **Entity-Aware Multi-Search:** Searches across Movies, TV Series, Directors, and Actors simultaneously.
 * **Dedicated Person Filmography:** Clicking any cast or crew member opens their complete, chronological portfolio of works, allowing deep director-led marathons.
 
-### 5. 🧬 Personalized Taste DNA Engine
-* **Multimodal Affinity Scoring:** Dynamically weights your preferences across genre affinities, Letterboxd CSV star ratings, and watch dwell times.
-* **Smart Negative Filtering:** Hard-filters titles you've rated 1★ or 2★ on Letterboxd, ensuring recommendations never push disliked styles.
+### 5. 🧬 Research-Grounded Two-Speed Recommendation Engine
+* **Two-Speed Dynamic Fusion:** Combines an all-time cinephile profile with an exponential-decay session vector ($N=3$) that instantly bends recommendations toward the title just watched.
+* **2-Hop Entity Graph Traversal:** Discovers adjacent titles through Director/Auteur filmographies, Lead Cast collaborations, and 56,000+ Letterboxd narrative themes and nanogenres.
+* **Explainable Attribution Badges:** Every recommendation features an explicit reason (*"Directed by Denis Villeneuve"*, *"Shared Theme: Mind-Bending Sci-Fi"*, *"Starring Cillian Murphy"*).
+* **Smart Negative Filtering:** Strict hard-filtering eliminates titles rated $\le 2.5\star$ or disliked, ensuring disliked tropes never pollute your rows.
 
 ### 6. 📺 Immersive Netflix-Grade Theater Experience
 * **Cinematic Billboard & Carousels:** High-contrast `#141414` canvas, responsive hero banners with clean logos, and smooth horizontal rails.
 * **Episode Hub & Auto-Resume:** Tracks your active season/episode progression and automatically loads your last streamed timestamp.
+
+---
+
+## 🧠 The Recommendation Engine: Research Foundations & Architecture
+
+Rather than relying on proprietary, opaque corporate retention algorithms or static tag averaging, MovieWatcher's recommendation engine is engineered directly from empirical academic research on **sequential media consumption**, **session-aware recommendation**, and **the psychological mechanics of the "rabbit hole" effect**.
+
+```
+Session Seed (What was just watched)
+         │
+         ├──▶ [Hop 1: Rabbit Hole Core]
+         │       • Director Filmography (Auteur Continuity: 1.0)
+         │       • Lead Cast Collaborations (Actor Continuity: 0.85)
+         │       • Letterboxd Narrative Themes & Nanogenres (0.75)
+         │
+         ├──▶ [Hop 2: Serendipitous Neighbor Expansion]
+         │       • Collaborators (Screenwriter / DP) & Adjacent Clusters (0.62)
+         │       • Quality Floor: Letterboxd Top 500 & IMDb Top 200
+         │
+         └──▶ Two-Speed Gated Fusion Matcher
+                 • FinalScore = α · SessionScore + (1 - α) · LongTermProfileScore
+                 • Dynamic Decay: α(0) = 0.75 ──▶ 2h Half-Life ──▶ 0.20 Floor
+```
+
+---
+
+### 1. Empirical Grounding: The 4 Scientific Pillars
+
+| Research Principle | Empirical Driver | Algorithmic Implementation | Core Literature |
+| :--- | :--- | :--- | :--- |
+| **Algorithmic Steering & Choice Overload** | ~80% of catalog streams are algorithm-surfaced because choice overload induces viewers to defer to system curation. | Automated row partitioning (*Because You Watched*, *Top Picks*, *Thematic Dives*) to eliminate decision fatigue. | Chapman & Abraham (2025); Arokiaraj et al. (2023) |
+| **The "Rabbit Hole Effect"** | Experiencing and enjoying media temporarily elevates cognitive accessibility for closely adjacent categories. | Immediate sequential priming anchoring recommendations to the title just watched across Director, Cast, and Tropes. | Woolley & Sharif (2021); Pradeep et al. (2020) |
+| **Two-Speed Sequential Momentum** | Combining long-term user preferences with short-term session intent consistently outperforms static profiles. | Linear $\alpha$-gated fusion blending active session momentum ($N=3$) with all-time taste DNA. | Ou et al. (2025); Phuong et al. (2019); Liu et al. (2022) |
+| **2-Hop Knowledge Graph Traversal** | 1-hop traversal creates filter bubbles; 3-hop causes topic drift. 2-hop traversal balances rabbit-holing with serendipity. | Bounded 2-hop entity traversal expanding from Director $\rightarrow$ Cast $\rightarrow$ Trope clusters. | Saat et al. (2025); Guo et al. (2020); Latifi et al. (2021) |
+
+---
+
+### 2. Mathematical Scoring & Two-Speed Gated Fusion
+
+Traditional recommenders treat viewing history as an unweighted bag of tags. In contrast, MovieWatcher models recommendations as a **continuous temporal state transition**:
+
+#### A. Sliding Session Window ($N = 3$) with Exponential Decay
+The active session tracks the viewer's recent trajectory $[s_0, s_1, s_2]$:
+$$w_k = 0.5^k \quad \text{for } k \in \{0, 1, 2\}$$
+* **$s_0$ (Primary Seed):** Most recently watched or rated title ($w_0 = 1.0$).
+* **$s_1, s_2$ (Secondary Signals):** Preceding session items ($w_1 = 0.50, w_2 = 0.25$).
+* **Inactivity Expiration:** A 4-hour inactivity window cleanly resets the active session back to baseline, preventing stale evening moods from polluting the next day's viewing.
+
+#### B. Dynamic Intent Gating ($\alpha$)
+The fusion weight $\alpha(\Delta t)$ determines how strongly the immediate session bends the persistent profile:
+$$\alpha(\Delta t) = 0.20 + 0.55 \cdot e^{-\Delta t / 2\text{h}}$$
+* **$\Delta t = 0$ (Just finished a film):** $\alpha = 0.75$. The session rabbit hole takes priority.
+* **$\Delta t > 2\text{h}$:** $\alpha$ relaxes toward $0.20$, allowing the viewer's long-term cinephile identity to take over.
+* **Expired / Inactive:** $\alpha = 0.0$. Pure baseline profile scoring.
+
+#### C. Fused Candidate Evaluation
+$$\text{FinalScore}(c) = \alpha \cdot \text{Score}_{\text{session}}(c, S) + (1 - \alpha) \cdot \text{Score}_{\text{base}}(c, P_{\text{long}})$$
+$$\text{MatchPercentage}(c) = \text{clamp}\big(75, 99, \lfloor 75 + 24 \cdot \text{FinalScore}(c) \rfloor\big)$$
+
+---
+
+### 3. Graph-Hop Entity Traversal & 0ms In-Memory Resolution
+
+Following the rigorous benchmark findings of **Latifi et al. (2021)**—which established that deterministic nearest-neighbor and graph traversal methods match or outperform opaque neural session recommenders—MovieWatcher runs candidate generation directly client-side in sub-millisecond time:
+
+1. **Hop 1 (Direct Adjacency):**
+   * **Auteur Edge ($w = 1.0$):** Explores the filmography of the seed's Director. Viewers routinely follow auteur-driven styles to reduce cognitive evaluation costs (Nanda & Banerjee, 2020).
+   * **Lead Cast Edge ($w = 0.85$):** Surfaces top-billed ensemble collaborations, satisfying parasocial familiarity heuristics.
+   * **Narrative Trope Edge ($w = 0.75$):** Evaluates shared themes and nanogenres against the **56,052 movies** and **4,867 TV shows** pre-compiled in [`movie_theme_ids.json`](file:///d:/CODE/moviewatcher/src/data/movie_theme_ids.json).
+2. **Hop 2 (Serendipitous Adjacency):**
+   * Surfaces recurring screenwriters, cinematographers, and topologically adjacent trope clusters (Saat et al., 2025).
+3. **Hard Negative Filtering:**
+   * Titles rated $\le 2.5\star$ or explicitly disliked are strictly purged from all recommendation candidate pools.
+
+---
+
+### 4. Psychological Drivers: Mood Maintenance vs. Fatigue
+
+Sequential media choices are fundamentally governed by emotional regulation (Castro et al., 2019; Shackleford et al., 2025):
+* **Immersion & Mood Maintenance (Early/Mid-Session):** Binge viewers prioritize sustaining an existing affective valence. The algorithm responds by deepening the thematic rabbit hole (*"Because You Watched..."*, *"Deep Sci-Fi & Time Paradox Dives"*).
+* **Cognitive Depletion & Comfort Anchoring (Extended Session):** As decision fatigue sets in, the threshold for evaluating complex, unfamiliar narratives increases. The engine counters fatigue with the **"Critically Acclaimed & Comfort Favorites"** row—anchored to high-consensus Letterboxd Top 500 and IMDb Top 200 masterpieces with $\ge 7.8$ ratings.
+
+---
+
+### 5. Explainability & Human Trust
+
+Every card surfaced by the recommendation engine features an explicit attribution badge explaining *why* it was selected:
+* `Directed by Christopher Nolan` (Auteur Rabbit Hole)
+* `Starring Cillian Murphy` (Ensemble Continuity)
+* `Shared Theme: Mind-Bending Sci-Fi` (Thematic Trope Overlap)
+* `Because you watched Interstellar` (Direct Sequential Transition)
+
+---
+
+### 📚 Academic Citations & References
+
+1. **Arokiaraj, P., Sandeep, D., Vishnu, J., & Muthurasu, N. (2023).** Movie Recommendation System Using Machine Learning. *Advances in Science and Technology*, 124, 398–406. https://doi.org/10.4028/p-g9ekjp
+2. **Castro, D., Rigby, J. M., Cabral, D., & Nisi, V. (2019).** The binge-watcher’s journey: Investigating motivations, contexts, and affective states surrounding Netflix viewing. *Convergence: The International Journal of Research into New Media Technologies*, 27(1), 3–20. https://doi.org/10.1177/1354856519890856
+3. **Chaitanya, V. S., & Thilagam, S. P. (2025).** PRIDES: A Probabilistic Model for Recurrent User Interest Drift Identification in Session-Based Recommendation. *IEEE Access*, 13, 73498–73519. https://doi.org/10.1109/ACCESS.2025.3564460
+4. **Chapman, H. E., & Abraham, A. (2025).** Because You Watched: How Do Streaming Services’ Recommender Systems Influence Aesthetic Choice? *Behavioral Sciences*, 15(11), 1544. https://doi.org/10.3390/bs15111544
+5. **García‐Sánchez, P., Vélez-Estévez, A., Merelo, J. J., & Cobo, M. J. (2021).** The Simpsons did it: Exploring the film trope space and its large scale structure. *PLoS ONE*, 16(3), e0248881. https://doi.org/10.1371/journal.pone.0248881
+6. **Guo, Q., Zhuang, F., Qin, C., Zhu, H., Xie, X., Xiong, H., & He, Q. (2020).** A Survey on Knowledge Graph-Based Recommender Systems. *IEEE Transactions on Knowledge and Data Engineering*, 34(8), 3549–3568. https://doi.org/10.1109/TKDE.2020.3028705
+7. **Jadhav, O. N., & Kb, A. (2022).** Movie Recommendation System Using Machine Learning Algorithms. *Journal of Machine and Computing*, 81–86. https://doi.org/10.53759/7669/jmc202202011
+8. **Kim, J., Kim, J., & Choi, J. (2021).** Sequential Movie Genre Prediction Using Average Transition Probability with Clustering. *Applied Sciences*, 11(24), 11841. https://doi.org/10.3390/app112411841
+9. **Latifi, S., Mauro, N., & Jannach, D. (2021).** Session-aware recommendation: A surprising quest for the state-of-the-art. *Information Sciences*, 573, 291–315. https://doi.org/10.1016/j.ins.2021.05.048
+10. **Liu, H., Xu, Z., Zhang, Q., & Tang, Y. (2022).** Integrating Users’ Long- and Short-Term Preferences for Session-based Recommendation. *IEEE 25th International Conference on Computer Supported Cooperative Work in Design (CSCWD)*, 611–616. https://doi.org/10.1109/CSCWD54268.2022.9776254
+11. **Masthoff, J. (2003).** Group Modeling: Selecting a Sequence of Television Items to Suit a Group of Viewers. *User Modeling and User-Adapted Interaction*, 14, 37–85. https://doi.org/10.1023/B:USER.0000010138.79319.fd
+12. **Nanda, A. P., & Banerjee, R. (2020).** Binge watching: An exploration of the role of technology. *Psychology and Marketing*, 37(9), 1212–1230. https://doi.org/10.1002/mar.21353
+13. **Oh, S., Bhattacharya, M., Feng, Y., & Lamkhede, S. (2024).** IntentRec: Predicting User Session Intent with Hierarchical Multi-Task Learning. *arXiv:2408.05353*. https://doi.org/10.48550/arxiv.2408.05353
+14. **Ou, Z., Zhang, X., Zhu, Y., Lyu, S., Liu, J., & Ao, T. (2025).** LS-TGNN: Long and Short-Term Temporal Graph Neural Network for Session-Based Recommendation. *Proceedings of the AAAI Conference on Artificial Intelligence*, 39(12), 12426–12434. https://doi.org/10.1609/aaai.v39i12.33354
+15. **Phuong, T. M., Thanh, T. C., & Bach, N. X. (2019).** Neural Session-Aware Recommendation. *IEEE Access*, 7, 86884–86896. https://doi.org/10.1109/ACCESS.2019.2926074
+16. **Pradeep, N., Mangalore, K. K. R., Rajpal, B., Prasad, N., & Shastri, R. (2020).** Content based movie recommendation system. *International Journal of Research in Industrial Engineering*, 9(4), 337–348. https://doi.org/10.22105/riej.2020.259302.1156
+17. **Saat, N. I. Y., Mohd, M., Noah, S. A. M., & Al-Ghuribi, S. M. (2025).** Beyond Relevance: Enhancing Serendipity in Content-Based Recommendations With Knowledge Graphs. *IEEE Access*, 13, 142980–142989. https://doi.org/10.1109/ACCESS.2025.3598342
+18. **Shackleford, K. E., Whiteman, A., Cohen, D. J., Buttafuoco, J. L., & Reed, P. A. (2025).** Choosing to Re‐Experience Movies and TV Episodes: Popularity, Motivations and Benefits of Volitional Reconsumption of Entertainment Media. *Social and Personality Psychology Compass*, 20. https://doi.org/10.1111/spc3.70119
+19. **Woolley, K., & Sharif, M. A. (2021).** Down a Rabbit Hole: How Prior Media Consumption Shapes Subsequent Media Consumption. *Journal of Marketing Research*, 59(3), 453–471. https://doi.org/10.1177/00222437211055403
 
 ---
 
