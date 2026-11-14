@@ -3,14 +3,11 @@ import type {
   MediaItem,
   Season,
   Episode,
-  WatchHistoryItem,
-  UserRatingItem,
   PersonItem,
   PersonCreditItem,
   PersonDetails,
   MultiSearchResult,
 } from '../types/movie';
-import { computeUnifiedInteractionMatrix } from './interactionMatrix';
 import { searchWithOrama, indexMediaItem } from './oramaSearch';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
@@ -21,8 +18,8 @@ export const getPosterUrl = (path: string | null | undefined, size = 'w500'): st
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
 };
 
-export const getBackdropUrl = (path: string | null | undefined, size = 'original'): string => {
-  if (!path) return 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=1920&auto=format&fit=crop&q=80';
+export const getBackdropUrl = (path: string | null | undefined, size = 'w780'): string => {
+  if (!path) return 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=1280&auto=format&fit=crop&q=80';
   if (path.startsWith('http')) return path;
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
 };
@@ -220,6 +217,59 @@ export const fetchCredits = async (
   return [];
 };
 
+export interface DetailedCreditsResult {
+  director?: { id: number; name: string };
+  cast: Array<{ id: number; name: string }>;
+}
+
+const detailedCreditsCache = new Map<string, DetailedCreditsResult>();
+
+export const fetchMediaDetailedCredits = async (
+  id: number,
+  type: 'movie' | 'tv' = 'movie'
+): Promise<DetailedCreditsResult> => {
+  const cacheKey = `${type}-${id}`;
+  if (detailedCreditsCache.has(cacheKey)) {
+    return detailedCreditsCache.get(cacheKey)!;
+  }
+  try {
+    const url = `https://api.themoviedb.org/3/${type}/${id}/credits`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${TMDB_READ_ACCESS_TOKEN}`,
+      },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      let director: { id: number; name: string } | undefined;
+      if (Array.isArray(data.crew)) {
+        const dir =
+          data.crew.find((c: any) => c.job === 'Director') ||
+          data.crew.find((c: any) => c.department === 'Directing');
+        if (dir && dir.name) {
+          director = { id: dir.id, name: dir.name };
+        }
+      }
+      const cast: Array<{ id: number; name: string }> = [];
+      if (Array.isArray(data.cast)) {
+        data.cast.slice(0, 5).forEach((c: any) => {
+          if (c && c.id && c.name) {
+            cast.push({ id: c.id, name: c.name });
+          }
+        });
+      }
+      const result: DetailedCreditsResult = { director, cast };
+      detailedCreditsCache.set(cacheKey, result);
+      return result;
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch detailed credits for ${type} #${id}`, err);
+  }
+  const fallback: DetailedCreditsResult = { cast: [] };
+  detailedCreditsCache.set(cacheKey, fallback);
+  return fallback;
+};
+
 const recommendationsCache = new Map<string, MediaItem[]>();
 
 export const fetchRecommendations = async (
@@ -352,161 +402,6 @@ export const GENRE_MAP: Record<number, string> = {
   10766: 'Soap',
   10767: 'Talk',
   10768: 'War & Politics',
-};
-
-export interface TailoredSuggestionsResult {
-  items: MediaItem[];
-  reason: string;
-  sourceTitles: string[];
-  topGenres: string[];
-}
-
-export const fetchTailoredSuggestions = async (
-  likedMedia: MediaItem[],
-  watchHistory: WatchHistoryItem[],
-  preferredType?: 'movie' | 'tv',
-  userRatings?: UserRatingItem[]
-): Promise<TailoredSuggestionsResult> => {
-  // Compute Unified Interaction Matrix across Letterboxd ratings, in-app hearts, and streaming dwell
-  const matrix = computeUnifiedInteractionMatrix(watchHistory, likedMedia, userRatings);
-
-  // If no user signals exist yet
-  if (matrix.itemCount === 0) {
-    return {
-      items: [],
-      reason: 'Like titles, rate films, or stream to train your personalized taste matrix in real time.',
-      sourceTitles: [],
-      topGenres: [],
-    };
-  }
-
-  // 1. Gather all excluded IDs:
-  // - Already watched or liked items
-  // - Hard-filtered titles (Letterboxd 1★–2★ ratings: 0.0 weight / negative filter)
-  const excludedIds = new Set<number>([
-    ...(likedMedia || []).map((m) => m.id),
-    ...(watchHistory || []).map((w) => w.id),
-    ...(userRatings || []).map((r) => r.id),
-    ...matrix.hardFilteredIds,
-  ]);
-
-  // 2. Select priority seeds from positiveSeeds (sorted by normalizedWeight: 5.0, 4.0, 3.5...)
-  const seeds: { id: number; type: 'movie' | 'tv'; title: string; weight: number; signal: string }[] = [];
-  const seedIds = new Set<number>();
-
-  for (const item of matrix.positiveSeeds) {
-    if (!seedIds.has(item.id) && seeds.length < 4) {
-      seeds.push({
-        id: item.id,
-        type: item.type,
-        title: item.title,
-        weight: item.normalizedWeight,
-        signal: item.primarySignal,
-      });
-      seedIds.add(item.id);
-    }
-  }
-
-  // Fallback to any positive interaction if positiveSeeds is small
-  if (seeds.length < 3) {
-    for (const item of matrix.interactions) {
-      if (!item.isHardFiltered && !seedIds.has(item.id) && seeds.length < 3) {
-        seeds.push({
-          id: item.id,
-          type: item.type,
-          title: item.title,
-          weight: item.normalizedWeight,
-          signal: item.primarySignal,
-        });
-        seedIds.add(item.id);
-      }
-    }
-  }
-
-  const topGenreNames = matrix.topGenres.map((g) => g.name);
-
-  // 3. Query TMDB recommendations for all seeds in parallel
-  const recsPromises = seeds.map((s) => fetchRecommendations(s.id, s.type));
-  const recsResults = await Promise.allSettled(recsPromises);
-
-  const candidateMap = new Map<number, { item: MediaItem; score: number }>();
-
-  recsResults.forEach((res, index) => {
-    if (res.status === 'fulfilled' && Array.isArray(res.value)) {
-      const seed = seeds[index];
-      // Seed weight scaled by BM25 normalized affinity
-      const seedWeight = seed ? Math.max(1, Math.min(seed.weight, 5)) : 2;
-
-      res.value.forEach((media, rank) => {
-        // Enforce hard-filter exclusion: never recommend movies the user disliked (1-2★)
-        if (!excludedIds.has(media.id) && media.poster_path) {
-          // Calculate BM25 genre affinity boost for candidate
-          const genreBoost = (media.genre_ids || []).reduce((acc, gid) => {
-            return acc + (matrix.genreWeights[gid] || 0) * 0.15;
-          }, 0);
-
-          const rankScore = (14 - rank) * seedWeight + (media.vote_average || 7.0) + genreBoost;
-          const existing = candidateMap.get(media.id);
-          if (existing) {
-            existing.score += rankScore;
-          } else {
-            candidateMap.set(media.id, { item: media, score: rankScore });
-          }
-        }
-      });
-    }
-  });
-
-  let candidates = Array.from(candidateMap.values())
-    .sort((a, b) => b.score - a.score)
-    .map((c) => c.item);
-
-  if (preferredType) {
-    const matched = candidates.filter((item) => item.media_type === preferredType);
-    if (matched.length >= 6) {
-      candidates = matched;
-    } else {
-      candidates = [...matched, ...candidates.filter((item) => item.media_type !== preferredType)];
-    }
-  }
-
-  const sortedItems = candidates.slice(0, 18);
-
-  // 4. Construct a natural human-friendly explanation reflecting the weighted matrix
-  let reason = '';
-  const sourceTitles = seeds.map((s) => s.title);
-
-  if (seeds.length > 0) {
-    const topSeed = seeds[0];
-    if (topSeed.signal === 'letterboxd_5' || topSeed.signal === 'letterboxd_4') {
-      reason = `Based on your top-rated Letterboxd film "${topSeed.title}"`;
-    } else if (topSeed.signal === 'heart') {
-      reason = `Because you loved "${topSeed.title}"`;
-    } else if (topSeed.signal === 'completed') {
-      reason = `Because you watched "${topSeed.title}"`;
-    } else {
-      reason = `Based on "${topSeed.title}"`;
-    }
-
-    if (seeds.length > 1 && !reason.includes('and')) {
-      reason += ` & "${seeds[1].title}"`;
-    }
-  }
-
-  if (topGenreNames.length > 0) {
-    if (reason) {
-      reason += ` · Tailored to your taste in ${topGenreNames.slice(0, 2).join(' & ')}`;
-    } else {
-      reason = `Curated for your top affinities in ${topGenreNames.slice(0, 3).join(', ')}`;
-    }
-  }
-
-  return {
-    items: sortedItems,
-    reason: reason.trim() || 'Curated by your Unified Taste Matrix',
-    sourceTitles,
-    topGenres: topGenreNames,
-  };
 };
 
 // Hardcoded TMDB Credentials

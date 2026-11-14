@@ -185,7 +185,7 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
     )
   );
 
-  const backdrop = getBackdropUrl(currentItem.backdrop_path);
+  const backdrop = getBackdropUrl(currentItem.backdrop_path, 'w1280');
   const releaseYear = currentItem.release_date
     ? new Date(currentItem.release_date).getFullYear()
     : '2024';
@@ -231,6 +231,7 @@ export const NetflixHero: React.FC<NetflixHeroProps> = ({
         key={currentItem.id}
         src={backdrop}
         alt={currentItem.title}
+        decoding="async"
         className={`absolute inset-0 w-full h-full object-cover object-center filter brightness-[0.75] contrast-[1.05] transition-opacity duration-700 ${
           fade ? 'opacity-100' : 'opacity-40'
         }`}

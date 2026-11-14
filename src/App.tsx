@@ -16,6 +16,7 @@ import { SearchResults } from './components/SearchResults';
 import { PersonDetailPage } from './components/PersonDetailPage';
 import { ProfilePage } from './components/ProfilePage';
 import { AuthModal } from './components/AuthModal';
+import { CommandMenu } from './components/CommandMenu';
 import { ContinueWatchingRow } from './components/ContinueWatchingRow';
 import { PopularOnNetflixRow } from './components/PopularOnNetflixRow';
 import { TopRatedPage } from './components/TopRatedPage';
@@ -608,6 +609,7 @@ export function App() {
       </Routes>
 
       <AuthModal />
+      <CommandMenu />
 
       {/* Hero Direct In-Place Video Player Modal (sharp edges, backdrop exit) */}
       {heroModalItem && (

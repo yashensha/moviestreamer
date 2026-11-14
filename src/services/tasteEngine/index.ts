@@ -2,5 +2,8 @@ export * from './types';
 export * from './genome';
 export * from './tasteProfile';
 export * from './matchScorer';
+export * from './sessionState';
+export * from './graphTraversal';
+export * from './twoSpeedMatcher';
 export * from './pipeline';
 export * from './useTasteProfile';

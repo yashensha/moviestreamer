@@ -11,6 +11,13 @@ import type {
 import { computeUnifiedInteractionMatrix } from '../services/interactionMatrix';
 import { calculateConfidenceWeight } from '../services/letterboxd';
 import { CURATED_SERIES } from '../services/tmdb';
+import {
+  type ActiveSessionState,
+  type SessionInteraction,
+  getInitialSessionState,
+  addSessionInteraction,
+  isSessionActive,
+} from '../services/tasteEngine/sessionState';
 
 interface StreamState {
   // Map of seriesId -> last streamed season & episode info
@@ -39,6 +46,12 @@ interface StreamState {
 
   // IDs explicitly deleted from Watched library by the user (persisted to prevent rehydration)
   deletedWatchedIds: number[];
+
+  // Active viewing session state for sequence-aware recommendations
+  activeSession: ActiveSessionState;
+  recordSessionInteraction: (event: Omit<SessionInteraction, 'timestamp'>) => void;
+  getActiveSession: () => ActiveSessionState;
+  clearActiveSession: () => void;
 
   // Actions
   saveSeriesEpisode: (
@@ -145,6 +158,25 @@ export const useStreamStore = create<StreamState>()(
       userRatings: [],
       dismissedHistoryIds: [],
       deletedWatchedIds: [],
+      activeSession: getInitialSessionState(),
+
+      recordSessionInteraction: (event) => {
+        set((state) => ({
+          activeSession: addSessionInteraction(state.activeSession, event),
+        }));
+      },
+
+      getActiveSession: () => {
+        const current = get().activeSession;
+        if (!isSessionActive(current)) {
+          return getInitialSessionState();
+        }
+        return current;
+      },
+
+      clearActiveSession: () => {
+        set({ activeSession: getInitialSessionState() });
+      },
 
       saveSeriesEpisode: (seriesId, season, episode, meta = {}) => {
         const now = Date.now();
@@ -213,6 +245,16 @@ export const useStreamStore = create<StreamState>()(
           };
         });
 
+        // Record active session trajectory
+        get().recordSessionInteraction({
+          id: seriesId,
+          title: title,
+          media_type: 'tv',
+          action: 'progress',
+          weight: progressPercent >= 80 ? 1.0 : 0.7,
+          genre_ids: meta.genre_ids,
+        });
+
         // Immediately sync to edge so Continue Watching is persistent
         try {
           const state = get();
@@ -254,6 +296,16 @@ export const useStreamStore = create<StreamState>()(
             watchHistory: [newItem, ...filtered].slice(0, 30),
             dismissedHistoryIds: (state.dismissedHistoryIds || []).filter((dId) => dId !== movie.id),
           };
+        });
+
+        // Record active session trajectory
+        get().recordSessionInteraction({
+          id: movie.id,
+          title: movie.title,
+          media_type: 'movie',
+          action: 'complete',
+          weight: 1.0,
+          genre_ids: movie.genre_ids,
         });
 
         try {
@@ -355,6 +407,17 @@ export const useStreamStore = create<StreamState>()(
             dislikedMedia: nextDisliked,
           };
         });
+
+        if (nextLiked.some((m) => Number(m.id) === Number(item.id))) {
+          get().recordSessionInteraction({
+            id: item.id,
+            title: item.title,
+            media_type: (item.media_type as any) || 'movie',
+            action: 'heart',
+            weight: 0.9,
+            genre_ids: item.genre_ids,
+          });
+        }
 
         // Immediately sync to edge and dev server so like changes are never reverted
         const state = get();
@@ -487,6 +550,16 @@ export const useStreamStore = create<StreamState>()(
             deletedWatchedIds: (state.deletedWatchedIds || []).filter((d) => Number(d) !== Number(id)),
             seriesProgress: updatedSeries,
           };
+        });
+
+        // Record active session trajectory
+        get().recordSessionInteraction({
+          id: item.id,
+          title: item.title,
+          media_type: (item.media_type as any) || 'movie',
+          action: 'complete',
+          weight: 1.0,
+          genre_ids: item.genre_ids,
         });
       },
 

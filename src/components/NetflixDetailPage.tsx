@@ -16,7 +16,6 @@ import {
 import { useStreamStore } from '../store/useStreamStore';
 import { calculateUnifiedMatchScore, useUserTasteProfile } from '../services/tasteEngine';
 import { getSavedPlaybackTime } from '../services/playbackStorage';
-import { generateItemSpecificRecommendations } from '../services/recommendationPipeline';
 import { NetflixNavbar } from './NetflixNavbar';
 import { SearchResults } from './SearchResults';
 import { NetflixTallCard } from './NetflixTallCard';
@@ -154,18 +153,10 @@ export const NetflixDetailPage: React.FC = () => {
             setGenres(d.genres.map((g) => g.name).slice(0, 4));
           }
 
-          // Use our own multi-factor taste algorithm instead of raw TMDB recommendations
-          generateItemSpecificRecommendations(
-            d,
-            watchHistory,
-            likedMedia,
-            userRatings,
-            dislikedMedia,
-            18
-          )
-            .then((tailored) => {
-              if (isCurrent && tailored && tailored.length > 0) {
-                setSimilarItems(tailored);
+          fetchRecommendations(d.id, (d.media_type as any) || 'movie')
+            .then((recs) => {
+              if (isCurrent && Array.isArray(recs) && recs.length > 0) {
+                setSimilarItems(recs.slice(0, 18));
               }
             })
             .catch(() => {});

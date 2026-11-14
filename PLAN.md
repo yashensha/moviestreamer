@@ -1,33 +1,47 @@
-# Person / Crew Profile Page & Search Modernization Mockup Plan
+# Implementation Plan: Session-Seeded Graph Recommender
 
 ## Objective
-Unslop and modernize the Search and Person experience into a top-tier cinematic interface:
-1. Provide a dedicated, shareable route `/person/:id`.
-2. Display rich profile hero (portrait, biography, department, career metrics).
-3. Showcase filmography with explicit role display ("what they played in that movie", e.g. character name for actors, job title for directors/crew).
-4. Upgrade the Search page layout from a plain forum-style list into a modern, cinematic experience.
+Rebuild the core recommendation engine based on sequential media consumption research (Consensus synthesis):
+1. Two-Speed Architecture (Long-term profile bent by dynamic session momentum).
+2. 2-Hop Entity Graph Traversal (Director/Auteur, Lead Cast, Microgenres, Letterboxd themes/tropes).
+3. Netflix-style partitioned rows with explainable attribution badges.
+
+---
+
+## Execution Protocol
+- **Single Active Task**: Execute ONLY the active marked task `[ ] -> [x]`.
+- **Stop and Check-In**: Halt after every task, present verification proof (3 sentences), and wait for user confirmation.
+- **Verification Gate**: Every task must pass `npx tsc --noEmit` and `npx oxlint`.
 
 ---
 
 ## Tasks
 
-- [x] **Task 1: Add Person Types & TMDB API Endpoints**
-  - Define `PersonDetails` and `PersonCreditItem` in `src/types/movie.ts` (including `character`, `job`, `department`).
-  - Implement `fetchPersonDetails` and enhance `fetchPersonCredits` in `src/services/tmdb.ts`.
+- [x] **Task 1: Session State Tracker (`src/services/tasteEngine/sessionState.ts` & store integration)**
+  - Implement $N = 3$ sliding window with exponential decay ($w = [1.0, 0.5, 0.25]$).
+  - Implement 4-hour inactivity timeout and session reset logic.
+  - Wire watch completion, high ratings, and dwell signals from `useStreamStore`.
+  - *Verification*: Unit verification of decay weights, timeout eviction, and `tsc --noEmit`.
 
-- [x] **Task 2: Build the Cinematic Person Profile Page (`src/components/PersonDetailPage.tsx`)**
-  - Create atmospheric hero with high-res portrait, biography, department badges, and career stats.
-  - Add department tabs (All, Acting, Directing/Crew) and sorting (Popularity, Year).
-  - Render filmography cards displaying character played (*"as [Character]"*) or crew role (*"[Job]"*).
+- [x] **Task 2: 2-Hop Entity Graph Traversal (`src/services/tasteEngine/graphTraversal.ts`)**
+  - Implement Hop 1: Director filmography, Lead Cast hits, and direct trope matches from active seed.
+  - Implement Hop 2: Collaborator adjacency and neighboring trope clusters.
+  - Integrate hard filtering to strictly eliminate watched, disliked, and $\le 2.5\star$ items.
+  - *Verification*: Verification of candidate generation output, deduplication, and `tsc --noEmit`.
 
-- [x] **Task 3: Wire `/person/:id` Route & Search Navigation**
-  - Register `/person/:id` route in `src/App.tsx`.
-  - Connect person cards in `SearchResults.tsx` to navigate to `/person/${person.id}`.
+- [x] **Task 3: Two-Speed Gated Fusion Matcher (`src/services/tasteEngine/twoSpeedMatcher.ts`)**
+  - Implement dynamic $\alpha(\Delta t) = 0.20 + 0.55 \cdot e^{-\Delta t / 2\text{h}}$ fusion formula.
+  - Combine session vector similarity with long-term taste profile.
+  - Produce calibrated 75%–99% match percentages with explicit human-readable match attributions.
+  - *Verification*: Benchmark scoring across sample items and `tsc --noEmit`.
 
-- [x] **Task 4: Modernize Search Results UI (`src/components/SearchResults.tsx`)**
-  - Replace plain forum pills with modern glass tabs and live counts.
-  - Upgrade Cast & Crew spotlight into modern portrait cards with character/department highlights.
-  - Ensure 4px geometry and consistent streaming aesthetic.
+- [x] **Task 4: High-Performance Recommendation Pipeline (`src/services/tasteEngine/pipeline.ts`)**
+  - Re-architect `runTasteRecommendationPipeline` to ingest session state and execute 2-hop traversal.
+  - Partition candidates into distinct rows: *"Because You Watched [Seed Title]"*, *"Top Picks for You"*, *"Thematic Dive"*, and *"Comfort Classics"*.
+  - Export unified types and hooks in `src/services/tasteEngine/index.ts`.
+  - *Verification*: Type check and verification in `TailoredRecommendationsRow.tsx`.
 
-- [x] **Task 5: Lint, Typecheck, and Verification**
-  - Run `oxlint` and `tsc --noEmit`.
+- [x] **Task 5: UI Attribution & End-to-End Verification**
+  - Update `TailoredRecommendationsRow.tsx` and media cards to display the explainable attribution badges (e.g. *"Directed by [Director]"*, *"Shared Trope"*).
+  - Run full test suite: `npx tsc --noEmit` and `npx oxlint`.
+  - Final human review.

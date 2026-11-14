@@ -1,13 +1,13 @@
 import type { MediaItem, MediaType } from '../../types/movie';
-import { TMDB_READ_ACCESS_TOKEN, fetchTrendingMedia } from '../tmdb';
-import { calculateUnifiedMatchScore } from './matchScorer';
-import { letterboxdTop500List, imdbTop200SeriesList } from '../topRatedLists';
+import { traverseEntityGraph } from './graphTraversal';
+import { scoreTwoSpeedCandidate } from './twoSpeedMatcher';
+import { resolveMovieGenomeSync } from './genome';
+import type { SessionInteraction, ActiveSessionState } from './sessionState';
 import type { UserTasteProfile, TasteEngineRows } from './types';
 
-interface CandidateEntry {
-  item: MediaItem;
-  seedTitle?: string;
-  matchScore: number;
+export interface TastePipelineOptions {
+  preferredType?: MediaType;
+  sessionState?: ActiveSessionState | null;
 }
 
 /**
@@ -64,12 +64,10 @@ export function formatEvocativeThemeTitle(rawTheme: string): string {
 
   if (themeTitleMap[t]) return themeTitleMap[t];
 
-  // Partial match against keywords in map
   for (const [key, val] of Object.entries(themeTitleMap)) {
     if (t.includes(key)) return val;
   }
 
-  // Fallback: title case with clean ampersands
   const formatted = rawTheme
     .replace(/\s+and\s+/gi, ' & ')
     .split(/[\s_-]+/)
@@ -80,471 +78,163 @@ export function formatEvocativeThemeTitle(rawTheme: string): string {
 }
 
 /**
- * Maps TMDB raw result to MediaItem
- */
-function mapTMDBToMediaItem(raw: any, typeFallback: MediaType = 'movie'): MediaItem {
-  const type: MediaType = raw.media_type || (raw.title ? 'movie' : 'tv') || typeFallback;
-  return {
-    id: raw.id,
-    title: raw.title || raw.name || 'Untitled',
-    overview: raw.overview || '',
-    poster_path: raw.poster_path || null,
-    backdrop_path: raw.backdrop_path || null,
-    media_type: type,
-    release_date: raw.release_date || raw.first_air_date || '',
-    vote_average: raw.vote_average || 7.0,
-    genre_ids: raw.genre_ids || [],
-  };
-}
-
-/**
- * Maps high-level themes to natural TMDB genre discovery filters
- */
-function getGenreFilterForTheme(themeName: string): string {
-  const t = themeName.toLowerCase();
-  if (t.includes('superhero') || t.includes('alien') || t.includes('space')) return '28,878';
-  if (t.includes('combat') || t.includes('martial arts') || t.includes('action')) return '28,12';
-  if (t.includes('horror') || t.includes('haunted') || t.includes('creepy') || t.includes('vampire')) return '27,53';
-  if (t.includes('humor') || t.includes('comedy') || t.includes('jokes')) return '35';
-  if (t.includes('romance') || t.includes('relationship') || t.includes('charming')) return '10749,18';
-  if (t.includes('crime') || t.includes('gangster') || t.includes('noir') || t.includes('heist')) return '80,53';
-  if (t.includes('animated') || t.includes('kids') || t.includes('fairy-tale')) return '16,10751';
-  if (t.includes('mystery') || t.includes('thriller') || t.includes('psychological')) return '9648,53';
-  if (t.includes('war') || t.includes('military') || t.includes('battle')) return '10752,36';
-  if (t.includes('western')) return '37';
-  if (t.includes('family') || t.includes('heartfelt') || t.includes('sentimental')) return '10751,18';
-  return '18'; // Drama baseline
-}
-
-/**
- * Helper to fetch TMDB endpoint safely
- */
-async function fetchTMDBJson(url: string): Promise<any[]> {
-  try {
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${TMDB_READ_ACCESS_TOKEN}` },
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data.results) ? data.results : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Executes the Netflix-style taste recommendation pipeline with deep candidate pools
+ * Core Sequential Recommendation Pipeline
+ * 
+ * 1. Identifies active session seed (or falls back to top user positive seed)
+ * 2. Traverses 2-hop entity graph (Director, Cast, Tropes, Recommendations)
+ * 3. Scores candidates via Two-Speed Gated Fusion Matcher
+ * 4. Partitions results into curated browse rows with explainable attribution
  */
 export async function runTasteRecommendationPipeline(
-  profile: UserTasteProfile,
-  options: { preferredType?: MediaType; limit?: number } = {}
+  profile?: UserTasteProfile | null,
+  options: TastePipelineOptions = {}
 ): Promise<TasteEngineRows> {
-  const preferredType = options.preferredType;
-  const limit = options.limit || 20;
+  const { preferredType, sessionState } = options;
 
-  // Cold Start: Fallback to high-quality trending
-  if (profile.totalInteractions === 0) {
-    const trending = await fetchTrendingMedia();
-    const topPicks = (preferredType ? trending.filter((t) => t.media_type === preferredType) : trending).slice(0, limit);
+  // Determine active seed: session activeSeed takes precedence
+  let activeSeed: SessionInteraction | null = sessionState?.activeSeed || null;
+
+  // If no active session seed exists, derive from user's most recent top favorite
+  if (!activeSeed && profile && profile.positiveSeeds && profile.positiveSeeds.length > 0) {
+    const topSeed = profile.positiveSeeds[0];
+    activeSeed = {
+      id: topSeed.id,
+      title: topSeed.title,
+      media_type: topSeed.media_type,
+      action: 'heart',
+      weight: 0.9,
+      timestamp: Date.now(),
+      director: topSeed.director,
+      cast: topSeed.cast,
+    };
+  }
+
+  const excludedIds = new Set<number>(profile?.excludedIds ? Array.from(profile.excludedIds) : []);
+
+  // 1. Traverse 2-Hop Entity Graph
+  const graphCandidates = await traverseEntityGraph(activeSeed, {
+    preferredType,
+    excludedIds,
+    maxHop1Candidates: 32,
+    maxHop2Candidates: 20,
+  });
+
+  // 2. Score with Two-Speed Gated Fusion Matcher
+  const scoredCandidates = graphCandidates.map((c) => {
+    const scored = scoreTwoSpeedCandidate(c, sessionState, profile);
+    const enrichedItem: MediaItem = {
+      ...c.item,
+      matchScore: scored.matchPercentage,
+      matchReason: scored.attributionReason,
+    };
     return {
-      topPicks,
-      thematicRows: [],
-      totalPoolCount: topPicks.length,
+      ...scored,
+      item: enrichedItem,
     };
-  }
+  });
 
-  const candidatePool = new Map<number, CandidateEntry>();
-  
-  // Strictly filter seeds matching preferredType to prevent cross-contamination
-  const matchingTypeSeeds = preferredType
-    ? profile.positiveSeeds.filter((s) => s.media_type === preferredType)
-    : profile.positiveSeeds;
+  // Sort overall pool by final score descending
+  scoredCandidates.sort((a, b) => b.finalScore - a.finalScore);
 
-  const seedsToUse = matchingTypeSeeds.length > 0 ? matchingTypeSeeds.slice(0, 8) : profile.positiveSeeds.slice(0, 8);
-  const primarySeed = seedsToUse[0];
-  const secondarySeed = seedsToUse[1];
-  const seedType = preferredType || primarySeed?.media_type || 'movie';
+  const totalPoolCount = scoredCandidates.length;
 
-  const parallelTasks: Promise<void>[] = [];
+  // 3. Row Partitioning
 
-  // ============================================================================
-  // Task 1: Deep Harvesting for Primary Seed ("Because You Watched")
-  // Fetch Recommendations (p1 + p2), Similar (p1), and Discover with seed genres
-  // ============================================================================
-  const seedCandidatesMap = new Map<number, MediaItem>();
+  // A. "Because You Watched" Row (Hop 1 core rabbit hole)
+  let becauseYouWatched: { seedTitle: string; items: MediaItem[] } | undefined;
+  const becauseSeen = new Set<number>();
 
-  if (primarySeed && (!preferredType || primarySeed.media_type === preferredType)) {
-    parallelTasks.push(
-      (async () => {
-        const [recsP1, recsP2, similarP1] = await Promise.all([
-          fetchTMDBJson(`https://api.themoviedb.org/3/${primarySeed.media_type}/${primarySeed.id}/recommendations?page=1`),
-          fetchTMDBJson(`https://api.themoviedb.org/3/${primarySeed.media_type}/${primarySeed.id}/recommendations?page=2`),
-          fetchTMDBJson(`https://api.themoviedb.org/3/${primarySeed.media_type}/${primarySeed.id}/similar?page=1`),
-        ]);
-
-        const rawList = [...recsP1, ...recsP2, ...similarP1];
-        for (const raw of rawList) {
-          if (raw.id === primarySeed.id || profile.excludedIds.has(raw.id) || !raw.poster_path) continue;
-          const item = mapTMDBToMediaItem(raw, seedType);
-          if (preferredType && item.media_type !== preferredType) continue;
-          seedCandidatesMap.set(item.id, item);
-        }
-
-        // If still low on candidates, fetch discover by primary seed's genres
-        if (seedCandidatesMap.size < 25 && primarySeed.genres.length > 0) {
-          const disc = await fetchTMDBJson(
-            `https://api.themoviedb.org/3/discover/${seedType}?sort_by=popularity.desc&vote_average.gte=6.5&vote_count.gte=100&page=1`
-          );
-          for (const raw of disc) {
-            if (raw.id === primarySeed.id || profile.excludedIds.has(raw.id) || !raw.poster_path) continue;
-            const item = mapTMDBToMediaItem(raw, seedType);
-            if (preferredType && item.media_type !== preferredType) continue;
-            seedCandidatesMap.set(item.id, item);
-          }
-        }
-      })()
-    );
-  }
-
-  // ============================================================================
-  // Task 2: Secondary Seed Harvesting ("More Like / Because You Liked Seed 2")
-  // ============================================================================
-  const secondarySeedCandidatesMap = new Map<number, MediaItem>();
-
-  if (secondarySeed && (!preferredType || secondarySeed.media_type === preferredType)) {
-    parallelTasks.push(
-      (async () => {
-        const [recsP1, similarP1] = await Promise.all([
-          fetchTMDBJson(`https://api.themoviedb.org/3/${secondarySeed.media_type}/${secondarySeed.id}/recommendations?page=1`),
-          fetchTMDBJson(`https://api.themoviedb.org/3/${secondarySeed.media_type}/${secondarySeed.id}/similar?page=1`),
-        ]);
-
-        const rawList = [...recsP1, ...similarP1];
-        for (const raw of rawList) {
-          if (raw.id === secondarySeed.id || raw.id === primarySeed?.id || profile.excludedIds.has(raw.id) || !raw.poster_path) continue;
-          const item = mapTMDBToMediaItem(raw, seedType);
-          if (preferredType && item.media_type !== preferredType) continue;
-          secondarySeedCandidatesMap.set(item.id, item);
-        }
-      })()
-    );
-  }
-
-  // ============================================================================
-  // Task 3: Broad Candidate Harvesting across other favorite seeds (seeds 3..6)
-  // ============================================================================
-  for (const seed of seedsToUse.slice(2, 6)) {
-    if (preferredType && seed.media_type !== preferredType) continue;
-    parallelTasks.push(
-      (async () => {
-        const recs = await fetchTMDBJson(
-          `https://api.themoviedb.org/3/${seed.media_type}/${seed.id}/recommendations?page=1`
-        );
-        for (const raw of recs) {
-          if (profile.excludedIds.has(raw.id) || !raw.poster_path) continue;
-          const item = mapTMDBToMediaItem(raw, seedType);
-          if (preferredType && item.media_type !== preferredType) continue;
-          if (!candidatePool.has(item.id)) {
-            const match = calculateUnifiedMatchScore(item, profile);
-            candidatePool.set(item.id, {
-              item,
-              seedTitle: seed.title,
-              matchScore: match.percentage,
-            });
-          }
-        }
-      })()
-    );
-  }
-
-  // ============================================================================
-  // Task 4: Thematic Rows Discovery (Top 2-3 Themes)
-  // Fetch high-volume discover sets for each theme
-  // ============================================================================
-  const thematicRowsToHarvest = profile.topThemes.slice(0, 3);
-  const themeCandidateBuckets = new Map<string, Map<number, MediaItem>>();
-
-  for (const th of thematicRowsToHarvest) {
-    themeCandidateBuckets.set(th.name, new Map());
-    const genreFilter = getGenreFilterForTheme(th.name);
-
-    parallelTasks.push(
-      (async () => {
-        const [p1, p2] = await Promise.all([
-          fetchTMDBJson(
-            `https://api.themoviedb.org/3/discover/${seedType}?with_genres=${genreFilter}&sort_by=popularity.desc&vote_average.gte=6.6&vote_count.gte=100&page=1`
-          ),
-          fetchTMDBJson(
-            `https://api.themoviedb.org/3/discover/${seedType}?with_genres=${genreFilter}&sort_by=popularity.desc&vote_average.gte=6.4&vote_count.gte=80&page=2`
-          ),
-        ]);
-
-        const bucket = themeCandidateBuckets.get(th.name)!;
-        for (const raw of [...p1, ...p2]) {
-          if (profile.excludedIds.has(raw.id) || !raw.poster_path) continue;
-          const item = mapTMDBToMediaItem(raw, seedType);
-          bucket.set(item.id, item);
-
-          // Also inject into global candidate pool for Top Picks
-          if (!candidatePool.has(item.id)) {
-            const match = calculateUnifiedMatchScore(item, profile);
-            candidatePool.set(item.id, {
-              item,
-              seedTitle: th.name,
-              matchScore: match.percentage,
-            });
-          }
-        }
-      })()
-    );
-  }
-
-  await Promise.allSettled(parallelTasks);
-
-  // Inject primary seed candidates into candidate pool
-  for (const item of seedCandidatesMap.values()) {
-    if (!candidatePool.has(item.id)) {
-      const match = calculateUnifiedMatchScore(item, profile);
-      candidatePool.set(item.id, {
-        item,
-        seedTitle: primarySeed?.title,
-        matchScore: match.percentage,
+  if (activeSeed && activeSeed.title) {
+    const seedAdjacent = scoredCandidates
+      .filter((c) => c.hopLevel === 1 || c.primaryEdge === 'director' || c.primaryEdge === 'cast' || c.primaryEdge === 'recommendation')
+      .slice(0, 18)
+      .map((c) => {
+        becauseSeen.add(c.item.id);
+        return c.item;
       });
-    }
-  }
 
-  // Inject secondary seed candidates into candidate pool
-  for (const item of secondarySeedCandidatesMap.values()) {
-    if (!candidatePool.has(item.id)) {
-      const match = calculateUnifiedMatchScore(item, profile);
-      candidatePool.set(item.id, {
-        item,
-        seedTitle: secondarySeed?.title,
-        matchScore: match.percentage,
-      });
-    }
-  }
-
-  // ============================================================================
-  // Rank and assemble final rows (Netflix standards: 18 - 24 items per row)
-  // ============================================================================
-  const rankedCandidates = Array.from(candidatePool.values()).sort(
-    (a, b) => b.matchScore - a.matchScore
-  );
-
-  // Row 1: Top Picks (Top 20 candidates)
-  const topPicks = rankedCandidates.slice(0, 20).map((c) => c.item);
-
-  // More Top Matches (candidates 10..35) to allow deduplication with Hero row
-  const moreTopMatches = rankedCandidates.slice(10, 35).map((c) => c.item);
-
-  // Row 2: Because You Watched "{primarySeed.title}" (18-20 items)
-  let becauseYouWatched: TasteEngineRows['becauseYouWatched'] = undefined;
-  if (primarySeed) {
-    const scoredSeedCandidates = Array.from(seedCandidatesMap.values())
-      .map((item) => ({
-        item,
-        score: calculateUnifiedMatchScore(item, profile).percentage,
-      }))
-      .sort((a, b) => b.score - a.score);
-
-    // If seed candidates are plentiful, take top 18-20
-    let seedItems = scoredSeedCandidates.map((c) => c.item).slice(0, 20);
-
-    // If still under 14 items, backfill with top picks from similar genres
-    if (seedItems.length < 14) {
-      const existingIds = new Set(seedItems.map((i) => i.id));
-      for (const cand of rankedCandidates) {
-        if (!existingIds.has(cand.item.id) && cand.item.id !== primarySeed.id) {
-          seedItems.push(cand.item);
-          existingIds.add(cand.item.id);
-          if (seedItems.length >= 18) break;
-        }
-      }
-    }
-
-    if (seedItems.length >= 6) {
+    if (seedAdjacent.length >= 3) {
       becauseYouWatched = {
-        seedTitle: primarySeed.title,
-        items: seedItems,
+        seedTitle: activeSeed.title,
+        items: seedAdjacent,
       };
     }
   }
 
-  // Row 3: Secondary Seed ("More Like Seed 2" or "Because You Liked Seed 2")
-  let secondaryBecauseYouWatched: TasteEngineRows['secondaryBecauseYouWatched'] = undefined;
-  if (secondarySeed && secondarySeedCandidatesMap.size > 0) {
-    const scoredSecCandidates = Array.from(secondarySeedCandidatesMap.values())
-      .filter((item) => item.id !== primarySeed?.id && item.id !== secondarySeed.id)
-      .map((item) => ({
-        item,
-        score: calculateUnifiedMatchScore(item, profile).percentage,
-      }))
-      .sort((a, b) => b.score - a.score);
+  // B. "Top Picks for You" (Balanced Two-Speed Fusion)
+  const topPicksSeen = new Set<number>();
+  const topPicks: MediaItem[] = [];
+  const moreTopMatches: MediaItem[] = [];
 
-    let secItems = scoredSecCandidates.map((c) => c.item).slice(0, 20);
-    if (secItems.length < 14) {
-      const existingIds = new Set(secItems.map((i) => i.id));
-      if (primarySeed) existingIds.add(primarySeed.id);
-      existingIds.add(secondarySeed.id);
-      for (const cand of rankedCandidates) {
-        if (!existingIds.has(cand.item.id)) {
-          secItems.push(cand.item);
-          existingIds.add(cand.item.id);
-          if (secItems.length >= 18) break;
-        }
+  for (const c of scoredCandidates) {
+    if (topPicks.length >= 24) {
+      if (moreTopMatches.length < 24) {
+        moreTopMatches.push(c.item);
       }
+      continue;
     }
-
-    if (secItems.length >= 6) {
-      secondaryBecauseYouWatched = {
-        seedTitle: secondarySeed.title,
-        items: secItems,
-      };
+    // Avoid exact duplicate of the primary item in Because You Watched if pool is rich
+    if (becauseSeen.has(c.item.id) && scoredCandidates.length > 30 && topPicks.length < 12) {
+      continue;
+    }
+    if (!topPicksSeen.has(c.item.id)) {
+      topPicksSeen.add(c.item.id);
+      topPicks.push(c.item);
     }
   }
 
-  // Row 4: Hidden Gems for Your Taste (High match >= 80%, high rating >= 6.8, not the first 4 mega-blockbusters)
-  const hiddenGemsPool = rankedCandidates
-    .filter((c) => {
-      const vote = c.item.vote_average || 0;
-      return c.matchScore >= 80 && vote >= 6.8;
-    })
-    .slice(4);
+  // C. Thematic Dives (Cluster exploration)
+  const themeBuckets = new Map<string, MediaItem[]>();
 
-  let hiddenGems: TasteEngineRows['hiddenGems'] = undefined;
-  if (hiddenGemsPool.length >= 6) {
-    hiddenGems = {
-      title: 'Hidden Gems for Your Taste',
-      items: hiddenGemsPool.slice(0, 20).map((c) => c.item),
-    };
-  }
-
-  // Row 5+: Thematic Rows with Evocative Titles (18-20 items per row)
-  const thematicRows: TasteEngineRows['thematicRows'] = [];
-
-  for (const th of thematicRowsToHarvest) {
-    const bucket = themeCandidateBuckets.get(th.name);
-    if (!bucket || bucket.size === 0) continue;
-
-    const scoredThemeItems = Array.from(bucket.values())
-      .map((item) => ({
-        item,
-        score: calculateUnifiedMatchScore(item, profile).percentage,
-      }))
-      .sort((a, b) => b.score - a.score);
-
-    let rowItems = scoredThemeItems.map((c) => c.item).slice(0, 20);
-
-    // If any row is under 14, backfill with high-scoring items from candidate pool
-    if (rowItems.length < 14) {
-      const existingIds = new Set(rowItems.map((i) => i.id));
-      for (const cand of rankedCandidates) {
-        if (!existingIds.has(cand.item.id)) {
-          rowItems.push(cand.item);
-          existingIds.add(cand.item.id);
-          if (rowItems.length >= 18) break;
-        }
+  for (const c of scoredCandidates) {
+    const genome = resolveMovieGenomeSync(
+      c.item.id,
+      (c.item.media_type as any) || 'movie',
+      c.item
+    );
+    const mainTheme = genome.themes[0] || genome.microgenres[0];
+    if (mainTheme) {
+      const cleanTheme = mainTheme.toLowerCase().trim();
+      const bucket = themeBuckets.get(cleanTheme) || [];
+      if (bucket.length < 16) {
+        bucket.push(c.item);
+        themeBuckets.set(cleanTheme, bucket);
       }
     }
+  }
 
-    if (rowItems.length >= 8) {
+  // Pick top 2 theme clusters with at least 4 titles
+  const thematicRows: Array<{ title: string; themeOrGenre: string; items: MediaItem[] }> = [];
+  for (const [rawTheme, items] of themeBuckets.entries()) {
+    if (items.length >= 4 && thematicRows.length < 3) {
       thematicRows.push({
-        title: formatEvocativeThemeTitle(th.name),
-        themeOrGenre: th.name,
-        items: rowItems,
+        title: formatEvocativeThemeTitle(rawTheme),
+        themeOrGenre: rawTheme,
+        items,
       });
     }
   }
 
-  // Row 6: Prestige & Award-Winning Picks tailored to user's taste genome
-  let prestigeSource: MediaItem[] = [];
-  if (preferredType === 'tv') {
-    prestigeSource = imdbTop200SeriesList;
-  } else if (preferredType === 'movie') {
-    prestigeSource = letterboxdTop500List;
-  } else {
-    prestigeSource = [...letterboxdTop500List.slice(0, 100), ...imdbTop200SeriesList.slice(0, 80)];
-  }
+  // D. "Hidden Gems / Comfort Classics" (Fatigue mitigation)
+  const hiddenGemsCandidates = scoredCandidates
+    .filter((c) => (c.item.vote_average || 0) >= 7.8 && c.matchPercentage >= 84)
+    .slice(0, 18)
+    .map((c) => c.item);
 
-  const scoredPrestige = prestigeSource
-    .filter((item) => !profile.excludedIds.has(item.id))
-    .map((item) => ({
-      item,
-      score: calculateUnifiedMatchScore(item, profile).percentage,
-    }))
-    .filter((c) => c.score >= 82)
-    .sort((a, b) => b.score - a.score);
-
-  let prestigePicks: TasteEngineRows['prestigePicks'] = undefined;
-  if (scoredPrestige.length >= 6) {
-    prestigePicks = {
-      title:
-        preferredType === 'tv'
-          ? 'Critically Acclaimed TV for Your Taste'
-          : preferredType === 'movie'
-          ? 'Letterboxd Acclaimed for Your Taste'
-          : 'Critically Acclaimed for Your Taste',
-      items: scoredPrestige.slice(0, 20).map((c) => c.item),
-    };
-  }
-
-  // Strict media_type validation filter
-  let finalTopPicks = topPicks;
-  let finalMoreTopMatches = moreTopMatches;
-  let finalBecauseYouWatched = becauseYouWatched;
-  let finalSecondaryBecauseYouWatched = secondaryBecauseYouWatched;
-  let finalHiddenGems = hiddenGems;
-  let finalThematicRows = thematicRows;
-  let finalPrestigePicks = prestigePicks;
-
-  if (preferredType) {
-    finalTopPicks = topPicks.filter((i) => i.media_type === preferredType);
-    finalMoreTopMatches = moreTopMatches.filter((i) => i.media_type === preferredType);
-    if (finalBecauseYouWatched) {
-      finalBecauseYouWatched = {
-        ...finalBecauseYouWatched,
-        items: finalBecauseYouWatched.items.filter((i) => i.media_type === preferredType),
-      };
-      if (finalBecauseYouWatched.items.length < 4) finalBecauseYouWatched = undefined;
-    }
-    if (finalSecondaryBecauseYouWatched) {
-      finalSecondaryBecauseYouWatched = {
-        ...finalSecondaryBecauseYouWatched,
-        items: finalSecondaryBecauseYouWatched.items.filter((i) => i.media_type === preferredType),
-      };
-      if (finalSecondaryBecauseYouWatched.items.length < 4) finalSecondaryBecauseYouWatched = undefined;
-    }
-    if (finalHiddenGems) {
-      finalHiddenGems = {
-        ...finalHiddenGems,
-        items: finalHiddenGems.items.filter((i) => i.media_type === preferredType),
-      };
-      if (finalHiddenGems.items.length < 4) finalHiddenGems = undefined;
-    }
-    if (finalPrestigePicks) {
-      finalPrestigePicks = {
-        ...finalPrestigePicks,
-        items: finalPrestigePicks.items.filter((i) => i.media_type === preferredType),
-      };
-      if (finalPrestigePicks.items.length < 4) finalPrestigePicks = undefined;
-    }
-    finalThematicRows = thematicRows
-      .map((row) => ({
-        ...row,
-        items: row.items.filter((i) => i.media_type === preferredType),
-      }))
-      .filter((row) => row.items.length >= 4);
-  }
+  const hiddenGems =
+    hiddenGemsCandidates.length >= 4
+      ? {
+          title: 'Critically Acclaimed & Comfort Favorites',
+          items: hiddenGemsCandidates,
+        }
+      : undefined;
 
   return {
-    topPicks: finalTopPicks,
-    moreTopMatches: finalMoreTopMatches,
-    becauseYouWatched: finalBecauseYouWatched,
-    secondaryBecauseYouWatched: finalSecondaryBecauseYouWatched,
-    hiddenGems: finalHiddenGems,
-    thematicRows: finalThematicRows,
-    prestigePicks: finalPrestigePicks,
-    totalPoolCount: rankedCandidates.length,
+    topPicks: topPicks.length > 0 ? topPicks : scoredCandidates.slice(0, 24).map((c) => c.item),
+    moreTopMatches: moreTopMatches.length > 0 ? moreTopMatches : undefined,
+    becauseYouWatched,
+    hiddenGems,
+    thematicRows,
+    totalPoolCount,
   };
 }

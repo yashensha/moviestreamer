@@ -31,6 +31,7 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
   const isWatched = useStreamStore((state) => state.isWatched);
   const dislikedMedia = useStreamStore((state) => state.dislikedMedia);
   const watchlist = useStreamStore((state) => state.watchlist);
+  const activeSession = useStreamStore((state) => state.activeSession);
 
   const [pipelineData, setPipelineData] = useState<TasteEngineRows>({
     topPicks: [],
@@ -51,6 +52,7 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
 
     runTasteRecommendationPipeline(profile, {
       preferredType: mediaType,
+      sessionState: activeSession,
     })
       .then((res) => {
         if (isMounted) {
@@ -64,7 +66,7 @@ export const TailoredRecommendationsRow: React.FC<TailoredRecommendationsRowProp
     return () => {
       isMounted = false;
     };
-  }, [likedMedia, watchHistory, userRatings, dislikedMedia, watchlist, mediaType]);
+  }, [likedMedia, watchHistory, userRatings, dislikedMedia, watchlist, mediaType, activeSession]);
 
   const heroSet = useMemo(() => {
     if (!heroItemIds) return new Set<number>();

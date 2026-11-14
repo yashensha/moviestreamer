@@ -44,6 +44,8 @@ export interface MediaItem {
   certification?: string;
   episode_run_time?: number[];
   tagline?: string;
+  matchScore?: number;
+  matchReason?: string;
 }
 
 // Kept for backward compatibility

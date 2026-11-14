@@ -136,6 +136,9 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
       : getBackdropUrl(effectiveBackdrop || item.poster_path, 'w780');
 
   const matchScore = useMemo(() => {
+    if (item.matchScore) {
+      return `${item.matchScore}% Match`;
+    }
     return calculateUnifiedMatchScore(item, tasteProfile).label;
   }, [item, tasteProfile]);
 
@@ -206,6 +209,7 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
           src={cardImage}
           alt={item.title}
           loading="lazy"
+          decoding="async"
           className="w-full h-full object-cover rounded-[4px] brightness-[0.92] group-hover/card:brightness-105 transition-all duration-500"
         />
 
@@ -431,6 +435,14 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
               </span>
             )}
           </div>
+
+          {/* Explainable Attribution Reason */}
+          {item.matchReason && (
+            <div className="text-[10px] text-cyan-400 font-medium truncate mt-1 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 inline-block shrink-0" />
+              <span className="truncate">{item.matchReason}</span>
+            </div>
+          )}
 
           {/* Clean Dot-separated Primary Genre Tags */}
           {tags.length > 0 && (

@@ -139,7 +139,7 @@ export const PersonDetailPage: React.FC = () => {
   // Top backdrop image for atmospheric hero glow
   const heroBackdrop = useMemo(() => {
     const topWithBackdrop = careerHighlights.find((h) => h.backdrop_path);
-    return topWithBackdrop ? getBackdropUrl(topWithBackdrop.backdrop_path, 'original') : '';
+    return topWithBackdrop ? getBackdropUrl(topWithBackdrop.backdrop_path, 'w1280') : '';
   }, [careerHighlights]);
 
   // Calculate age if birthday is available

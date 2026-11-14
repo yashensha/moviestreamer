@@ -54,6 +54,7 @@ export const NetflixBackdropCard: React.FC<NetflixBackdropCardProps> = ({
           src={backdrop}
           alt={item.title}
           loading="lazy"
+          decoding="async"
           className="w-full h-full object-cover rounded-[4px] brightness-[0.92] group-hover/card:brightness-105 transition-all duration-500"
         />
 

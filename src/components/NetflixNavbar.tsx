@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Search, X, ChevronDown } from 'lucide-react';
+import { Search, ChevronDown } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useCommandMenuStore } from '../store/useCommandMenuStore';
 import { SevenLogo } from './SevenLogo';
 
 interface NetflixNavbarProps {
@@ -22,9 +23,7 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
   autoHide = false,
 }) => {
   const [isScrolled, setIsScrolled] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
@@ -62,26 +61,21 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') {
         if (e.key === 'Escape') {
-          setIsSearchOpen(false);
           setIsMobileMenuOpen(false);
-          searchInputRef.current?.blur();
         }
         return;
       }
 
       if (e.key === 'Escape') {
-        setIsSearchOpen(false);
         setIsMobileMenuOpen(false);
       }
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsSearchOpen(true);
-        setTimeout(() => searchInputRef.current?.focus(), 50);
+        useCommandMenuStore.getState().toggle();
       } else if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
-        setIsSearchOpen(true);
-        setTimeout(() => searchInputRef.current?.focus(), 50);
+        useCommandMenuStore.getState().open();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -89,12 +83,7 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
   }, []);
 
   const toggleSearch = () => {
-    if (!isSearchOpen) {
-      setIsSearchOpen(true);
-      setTimeout(() => searchInputRef.current?.focus(), 100);
-    } else if (!searchQuery) {
-      setIsSearchOpen(false);
-    }
+    useCommandMenuStore.getState().open(searchQuery);
   };
 
   const handleNav = (tab: 'home' | 'tv' | 'movie' | 'history' | 'profile' | 'watchlist', path: string) => {
@@ -104,7 +93,7 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
     navigate(path);
   };
 
-  const isForcedVisible = !autoHide || isSearchOpen || Boolean(searchQuery);
+  const isForcedVisible = !autoHide || Boolean(searchQuery);
 
   return (
     <div className={`fixed top-0 left-0 right-0 z-50 ${autoHide ? 'group/nav' : ''}`}>
@@ -215,49 +204,19 @@ export const NetflixNavbar: React.FC<NetflixNavbarProps> = ({
         <div className="flex items-center gap-4 sm:gap-5 md:gap-6">
           {actions}
 
-          {/* Search Bar */}
-          <div className="relative flex items-center">
-            <div
-              className={`flex items-center transition-all duration-300 ${
-                isSearchOpen || searchQuery
-                  ? 'w-44 sm:w-60 md:w-72 bg-black/90 border border-white/80 px-2.5 py-1.5'
-                  : 'w-8 bg-transparent border-transparent'
-              }`}
-            >
-              <button
-                type="button"
-                onClick={toggleSearch}
-                className="text-zinc-200 hover:text-white transition focus:outline-none cursor-pointer"
-                title="Search movies and series"
-              >
-                <Search className="w-4 h-4 md:w-5 md:h-5" />
-              </button>
-
-              {(isSearchOpen || searchQuery) && (
-                <>
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => onSearchChange(e.target.value)}
-                    placeholder="Titles, people, genres..."
-                    className="w-full bg-transparent border-none text-xs sm:text-sm text-white placeholder-zinc-400 focus:outline-none ml-2"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => {
-                        onSearchChange('');
-                        searchInputRef.current?.focus();
-                      }}
-                      className="text-zinc-400 hover:text-white ml-1 cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+          {/* Universal Fast Command Search (CMDK) */}
+          <button
+            type="button"
+            onClick={toggleSearch}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-[4px] bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 hover:border-zinc-700 transition cursor-pointer"
+            title="Search movies, directors, crew (⌘K)"
+          >
+            <Search className="w-3.5 h-3.5 text-zinc-400" />
+            <span className="text-xs text-zinc-400 hidden sm:inline">Search titles, creators...</span>
+            <kbd className="text-[10px] font-mono text-zinc-500 bg-zinc-950 px-1.5 py-0.5 rounded-[2px] border border-zinc-800 hidden md:inline">
+              ⌘K
+            </kbd>
+          </button>
 
           {/* Profile Square Avatar Tile with Chevron */}
           {user ? (
