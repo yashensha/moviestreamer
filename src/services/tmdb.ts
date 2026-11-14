@@ -920,6 +920,47 @@ export const fetchPersonDetails = async (personId: number): Promise<PersonDetail
   return null;
 };
 
+// Role priority ranking for formatting multi-role creators
+const ROLE_PRIORITY: Record<string, number> = {
+  Director: 1,
+  'Co-Director': 2,
+  Writer: 3,
+  Screenplay: 4,
+  Story: 5,
+  Creator: 6,
+  Producer: 10,
+  'Executive Producer': 11,
+  'Co-Producer': 12,
+  'Original Music Composer': 15,
+  Composer: 16,
+  'Director of Photography': 20,
+  Cinematographer: 21,
+  Editor: 22,
+};
+
+export const getRoleRank = (role: string): number => {
+  if (role.startsWith('as ')) return 7; // Characters right after screenwriting
+  return ROLE_PRIORITY[role] ?? 40;
+};
+
+export const formatMergedRoles = (roles: string[]): string => {
+  const seen = new Set<string>();
+  const cleanRoles: string[] = [];
+
+  for (const r of roles) {
+    const trimmed = r.trim();
+    if (!trimmed) continue;
+    const lower = trimmed.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      cleanRoles.push(trimmed);
+    }
+  }
+
+  cleanRoles.sort((a, b) => getRoleRank(a) - getRoleRank(b));
+  return cleanRoles.join(', ');
+};
+
 // Fetch person full credits preserving role/character and job
 export const fetchPersonFullCredits = async (
   personId: number
@@ -951,26 +992,59 @@ export const fetchPersonFullCredits = async (
       const rawCast: any[] = data.cast || [];
       const rawCrew: any[] = data.crew || [];
 
-      // Deduplicate within cast and crew by id + role
-      const seenCast = new Set<string>();
-      const cast: PersonCreditItem[] = [];
+      // Deduplicate cast items by movie/tv ID while aggregating multiple characters
+      const castMap = new Map<number, { item: any; characters: string[] }>();
       for (const item of rawCast) {
         if (!item.id || (!item.poster_path && !item.backdrop_path)) continue;
-        const key = `${item.id}-${item.character || ''}`;
-        if (seenCast.has(key)) continue;
-        seenCast.add(key);
-        cast.push(parseCredit(item));
+        if (!castMap.has(item.id)) {
+          castMap.set(item.id, {
+            item,
+            characters: item.character ? [item.character] : [],
+          });
+        } else {
+          const entry = castMap.get(item.id)!;
+          if (item.character && !entry.characters.includes(item.character)) {
+            entry.characters.push(item.character);
+          }
+          if ((item.vote_count || 0) > (entry.item.vote_count || 0)) {
+            entry.item = item;
+          }
+        }
       }
 
-      const seenCrew = new Set<string>();
-      const crew: PersonCreditItem[] = [];
+      const cast: PersonCreditItem[] = Array.from(castMap.values()).map(({ item, characters }) => {
+        const parsed = parseCredit(item);
+        if (characters.length > 0) {
+          parsed.character = characters.join(' / ');
+        }
+        return parsed;
+      });
+
+      // Deduplicate crew items by movie/tv ID while aggregating all jobs (e.g. Director, Writer, Producer)
+      const crewMap = new Map<number, { item: any; jobs: string[] }>();
       for (const item of rawCrew) {
         if (!item.id || (!item.poster_path && !item.backdrop_path)) continue;
-        const key = `${item.id}-${item.job || ''}`;
-        if (seenCrew.has(key)) continue;
-        seenCrew.add(key);
-        crew.push(parseCredit(item));
+        if (!crewMap.has(item.id)) {
+          crewMap.set(item.id, {
+            item,
+            jobs: item.job ? [item.job] : [],
+          });
+        } else {
+          const entry = crewMap.get(item.id)!;
+          if (item.job && !entry.jobs.includes(item.job)) {
+            entry.jobs.push(item.job);
+          }
+          if ((item.vote_count || 0) > (entry.item.vote_count || 0)) {
+            entry.item = item;
+          }
+        }
       }
+
+      const crew: PersonCreditItem[] = Array.from(crewMap.values()).map(({ item, jobs }) => {
+        const parsed = parseCredit(item);
+        parsed.job = formatMergedRoles(jobs) || item.job || 'Crew';
+        return parsed;
+      });
 
       // Sort by popularity / vote count
       cast.sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));

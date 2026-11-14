@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Command } from 'cmdk';
 import {
-  Search,
   Film,
   Tv,
   User,
   Star,
-  ArrowRight,
   Bookmark,
   History,
   Award,
@@ -15,67 +12,61 @@ import {
   X,
 } from 'lucide-react';
 import { useCommandMenuStore } from '../store/useCommandMenuStore';
+import { useStreamStore } from '../store/useStreamStore';
 import { multiSearchWithTMDB, getPosterUrl } from '../services/tmdb';
 import type { MediaItem, PersonItem } from '../types/movie';
+import { CompactMediaCard } from './CompactMediaCard';
+import {
+  ICONIC_DIRECTORS,
+  getPersonalizedSpotlightCreators,
+  type IconicCreator,
+} from '../services/creatorSpotlight';
+import {
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandShortcut,
+  CommandSeparator,
+} from './ui/command';
 
-// Curated list of iconic directors and creators for instant discovery when query is empty
-const ICONIC_DIRECTORS: Array<{
-  id: number;
+// Monogram initials extractor (e.g. "Christopher Nolan" -> "CN")
+const getInitials = (name: string): string => {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+};
+
+// Resilient avatar with zero-flicker initials fallback (sharp 0px radius, pure black, borderless)
+const ResilientAvatar: React.FC<{
+  src: string | null | undefined;
+  alt: string;
   name: string;
-  department: string;
-  profilePath: string;
-  knownFor: string;
-}> = [
-  {
-    id: 525,
-    name: 'Christopher Nolan',
-    department: 'Directing',
-    profilePath: '/xuAIuYSmsUzKlUMBFGVZaWsY3Z5.jpg',
-    knownFor: 'Oppenheimer, Interstellar, The Dark Knight, Inception',
-  },
-  {
-    id: 1032,
-    name: 'Martin Scorsese',
-    department: 'Directing',
-    profilePath: '/9U9Y5GQuWX3Ebg39JdkRM52V6b5.jpg',
-    knownFor: 'Taxi Driver, GoodFellas, Killers of the Flower Moon',
-  },
-  {
-    id: 138,
-    name: 'Quentin Tarantino',
-    department: 'Directing & Writing',
-    profilePath: '/1gjcpAa99FAQU4MZJZEurRtK8IO.jpg',
-    knownFor: 'Pulp Fiction, Django Unchained, Inglourious Basterds',
-  },
-  {
-    id: 137427,
-    name: 'Denis Villeneuve',
-    department: 'Directing',
-    profilePath: '/tz1uO86nLd9jQZ4gJqF9k80iR8.jpg',
-    knownFor: 'Dune, Blade Runner 2049, Arrival, Sicario',
-  },
-  {
-    id: 6775,
-    name: 'Greta Gerwig',
-    department: 'Directing & Writing',
-    profilePath: '/2tNq0vW4W2Xo3aL7x2bZ3xJ8vV.jpg',
-    knownFor: 'Barbie, Little Women, Lady Bird',
-  },
-  {
-    id: 2037,
-    name: 'Cillian Murphy',
-    department: 'Acting',
-    profilePath: '/2lKs67r7FI4bPu0AXxMUJZxmUXn.jpg',
-    knownFor: 'Oppenheimer, Peaky Blinders, 28 Days Later',
-  },
-  {
-    id: 947,
-    name: 'Hans Zimmer',
-    department: 'Original Music',
-    profilePath: '/tpQup1z9596UmQx25WCne4SSO.jpg',
-    knownFor: 'Interstellar, Inception, Gladiator, The Lion King',
-  },
-];
+  className?: string;
+}> = ({ src, alt, name, className = 'w-7 h-7 rounded-none' }) => {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const initials = getInitials(name);
+  const hasError = !src || failedSrc === src;
+
+  return (
+    <div
+      className={`relative overflow-hidden bg-black border-0 flex-shrink-0 flex items-center justify-center select-none ${className}`}
+    >
+      {src && !hasError ? (
+        <img
+          src={src}
+          alt={alt}
+          onError={() => setFailedSrc(src)}
+          className="w-full h-full object-cover rounded-none"
+        />
+      ) : (
+        <span className="text-[10px] font-bold text-zinc-400 font-mono">{initials}</span>
+      )}
+    </div>
+  );
+};
 
 type SearchCategory = 'all' | 'people' | 'movies' | 'tv';
 
@@ -83,6 +74,33 @@ export const CommandMenu: React.FC = () => {
   const isOpen = useCommandMenuStore((state) => state.isOpen);
   const initialQuery = useCommandMenuStore((state) => state.initialQuery);
   const close = useCommandMenuStore((state) => state.close);
+
+  // User engagement signals from stream store
+  const likedMedia = useStreamStore((state) => state.likedMedia);
+  const userRatings = useStreamStore((state) => state.userRatings);
+  const watchHistory = useStreamStore((state) => state.watchHistory);
+
+  const [spotlightCreators, setSpotlightCreators] = useState<IconicCreator[]>(ICONIC_DIRECTORS);
+  const [isSpotlightPersonalized, setIsSpotlightPersonalized] = useState(false);
+
+  // Compute personalized spotlight creators based on the user's likes & favorites
+  useEffect(() => {
+    let isCurrent = true;
+    getPersonalizedSpotlightCreators(likedMedia, userRatings, watchHistory)
+      .then((res) => {
+        if (isCurrent) {
+          setSpotlightCreators(res.creators);
+          setIsSpotlightPersonalized(res.isPersonalized);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to resolve personalized spotlight creators:', err);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [likedMedia, userRatings, watchHistory]);
 
   const [query, setQuery] = useState(initialQuery || '');
   const [category, setCategory] = useState<SearchCategory>('all');
@@ -177,372 +195,352 @@ export const CommandMenu: React.FC = () => {
     navigate(path);
   }, [close, navigate]);
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-black/80 backdrop-blur-md transition-opacity animate-in fade-in duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-    >
-      <div
-        className="relative w-full max-w-2xl bg-[#0d0d0d] border border-zinc-800 rounded-[4px] shadow-2xl overflow-hidden font-sans flex flex-col max-h-[80vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Command
-          shouldFilter={false}
-          className="flex flex-col flex-1 min-h-0 bg-transparent text-white"
-        >
-          {/* Top Search Input & Controls */}
-          <div className="flex items-center px-4 py-3 border-b border-zinc-800/80 bg-zinc-950/60">
-            <Search className="w-4 h-4 text-zinc-400 mr-3 flex-shrink-0" />
-            <Command.Input
-              autoFocus
-              value={query}
-              onValueChange={setQuery}
-              placeholder="Search movies, TV shows, directors, actors..."
-              className="w-full bg-transparent text-sm text-white placeholder-zinc-500 outline-none font-medium"
-            />
+    <CommandDialog open={isOpen} onOpenChange={(open) => !open && close()}>
+      {/* Search Header Bar with Input and Clear/Loading Controls */}
+      <div className="relative flex items-center pr-3 bg-black">
+        <CommandInput
+          value={query}
+          onValueChange={setQuery}
+          placeholder="Search movies, TV shows, actors, directors..."
+          className="pr-16"
+        />
 
-            {loading && (
-              <Loader2 className="w-4 h-4 text-zinc-400 animate-spin ml-2 flex-shrink-0" />
-            )}
+        <div className="absolute right-3 flex items-center gap-1.5 z-10">
+          {loading && (
+            <Loader2 className="w-4 h-4 text-zinc-400 animate-spin" />
+          )}
 
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery('')}
-                className="p-1 text-zinc-500 hover:text-zinc-200 transition cursor-pointer ml-1"
-                title="Clear query"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-
+          {query && (
             <button
               type="button"
-              onClick={close}
-              className="hidden sm:inline-flex items-center gap-0.5 text-[10px] text-zinc-400 bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded-[2px] ml-2 font-mono hover:text-white transition cursor-pointer"
+              onClick={() => setQuery('')}
+              className="p-1 text-zinc-400 hover:text-white transition cursor-pointer"
+              title="Clear search"
             >
-              ESC
+              <X className="w-3.5 h-3.5" />
             </button>
-          </div>
+          )}
 
-          {/* Quick Filter Category Pills */}
-          <div className="flex items-center gap-1 px-3 py-2 border-b border-zinc-850/60 bg-zinc-950/30 overflow-x-auto scrollbar-none">
-            <button
-              type="button"
-              onClick={() => setCategory('all')}
-              className={`px-2.5 py-1 rounded-[3px] text-xs font-semibold transition cursor-pointer ${
-                category === 'all'
-                  ? 'bg-zinc-200 text-black font-bold'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-              }`}
-            >
-              All
-            </button>
-            <button
-              type="button"
-              onClick={() => setCategory('people')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-[3px] text-xs font-semibold transition cursor-pointer ${
-                category === 'people'
-                  ? 'bg-zinc-200 text-black font-bold'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-              }`}
-            >
-              <User className="w-3 h-3" />
-              <span>Directors &amp; Cast</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setCategory('movies')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-[3px] text-xs font-semibold transition cursor-pointer ${
-                category === 'movies'
-                  ? 'bg-zinc-200 text-black font-bold'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-              }`}
-            >
-              <Film className="w-3 h-3" />
-              <span>Movies</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setCategory('tv')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-[3px] text-xs font-semibold transition cursor-pointer ${
-                category === 'tv'
-                  ? 'bg-zinc-200 text-black font-bold'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-              }`}
-            >
-              <Tv className="w-3 h-3" />
-              <span>Series</span>
-            </button>
-          </div>
-
-          {/* Scrollable Command Results List */}
-          <Command.List className="flex-1 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-zinc-800">
-            {/* Empty State */}
-            {query.trim() && !loading && filteredPeople.length === 0 && filteredMedia.length === 0 && (
-              <Command.Empty className="py-14 text-center space-y-2">
-                <p className="text-sm text-zinc-300 font-semibold">
-                  No matching titles or creators found for &ldquo;{query}&rdquo;
-                </p>
-                <p className="text-xs text-zinc-500">
-                  Try checking spelling or search directly by creator name (e.g. &ldquo;Nolan&rdquo;, &ldquo;Scorsese&rdquo;).
-                </p>
-              </Command.Empty>
-            )}
-
-            {/* ======================================================== */}
-            {/* GROUP 1: DIRECTORS, CREW & CAST MEMBERS                  */}
-            {/* ======================================================== */}
-            {filteredPeople.length > 0 && (
-              <Command.Group
-                heading="Directors, Creators & Cast"
-                className="px-1 py-1 text-[10px] font-bold text-zinc-500 uppercase tracking-wider"
-              >
-                {filteredPeople.slice(0, 8).map((person) => (
-                  <Command.Item
-                    key={`person-${person.id}`}
-                    value={`person-${person.name}-${person.id}`}
-                    onSelect={() => handleSelectPerson(person)}
-                    className="flex items-center gap-3 p-2 rounded-[4px] cursor-pointer select-none transition-colors data-[selected=true]:bg-zinc-850 data-[selected=true]:text-white hover:bg-zinc-850/80 group"
-                  >
-                    {/* Portrait Thumbnail */}
-                    <div className="w-9 h-12 rounded-[3px] overflow-hidden bg-zinc-850 flex-shrink-0 border border-zinc-800 shadow-sm">
-                      {person.profile_path ? (
-                        <img
-                          src={getPosterUrl(person.profile_path, 'w185')}
-                          alt={person.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs font-bold">
-                          {person.name.charAt(0)}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Person Details */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-white group-hover:text-zinc-100 truncate">
-                          {person.name}
-                        </span>
-                        <span className="text-[10px] uppercase font-semibold tracking-wider text-zinc-400 bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded-[2px]">
-                          {person.known_for_department || 'Creator'}
-                        </span>
-                      </div>
-
-                      {person.known_for && person.known_for.length > 0 ? (
-                        <p className="text-xs text-zinc-400 truncate mt-0.5">
-                          Notable: {person.known_for.map((k) => k.title).slice(0, 3).join(', ')}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-zinc-500 mt-0.5">View artist filmography &amp; roles</p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1 text-xs text-zinc-400 group-hover:text-white transition flex-shrink-0 font-medium">
-                      <span>Filmography</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                    </div>
-                  </Command.Item>
-                ))}
-              </Command.Group>
-            )}
-
-            {/* ======================================================== */}
-            {/* GROUP 2: MOVIES & TELEVISION SERIES                      */}
-            {/* ======================================================== */}
-            {filteredMedia.length > 0 && (
-              <Command.Group
-                heading="Movies & Series"
-                className="px-1 py-1 text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-3"
-              >
-                {filteredMedia.slice(0, 12).map((item) => {
-                  const year = item.release_date ? item.release_date.slice(0, 4) : '';
-
-                  return (
-                    <Command.Item
-                      key={`media-${item.id}`}
-                      value={`media-${item.title}-${item.id}`}
-                      onSelect={() => handleSelectMedia(item)}
-                      className="flex items-center gap-3 p-2 rounded-[4px] cursor-pointer select-none transition-colors data-[selected=true]:bg-zinc-850 data-[selected=true]:text-white hover:bg-zinc-850/80 group"
-                    >
-                      {/* Poster Thumbnail */}
-                      <div className="w-9 h-13 rounded-[3px] overflow-hidden bg-zinc-850 flex-shrink-0 border border-zinc-800 shadow-sm">
-                        {item.poster_path ? (
-                          <img
-                            src={getPosterUrl(item.poster_path, 'w185')}
-                            alt={item.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-zinc-600">
-                            <Film className="w-4 h-4" />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Title & Metadata */}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-white truncate">
-                            {item.title}
-                          </span>
-                          {year && (
-                            <span className="text-xs text-zinc-400 font-medium">
-                              {year}
-                            </span>
-                          )}
-                          <span className="text-[9px] uppercase font-mono tracking-wider text-zinc-500 ml-auto flex-shrink-0">
-                            {item.media_type === 'tv' ? 'TV' : 'MOVIE'}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2 text-xs text-zinc-400 truncate mt-0.5">
-                          {item.vote_average > 0 && (
-                            <span className="text-emerald-400 font-bold flex items-center gap-0.5 flex-shrink-0">
-                              ★ {item.vote_average.toFixed(1)}
-                            </span>
-                          )}
-                          <span className="truncate">
-                            {item.overview || 'Explore streaming options and details'}
-                          </span>
-                        </div>
-                      </div>
-                    </Command.Item>
-                  );
-                })}
-              </Command.Group>
-            )}
-
-            {/* ======================================================== */}
-            {/* INITIAL STATE: ICONIC CREATORS SPOTLIGHT & QUICK NAV     */}
-            {/* ======================================================== */}
-            {!query.trim() && (
-              <>
-                <Command.Group
-                  heading="Spotlight: Iconic Directors & Creators"
-                  className="px-1 py-1 text-[10px] font-bold text-zinc-500 uppercase tracking-wider"
-                >
-                  {ICONIC_DIRECTORS.map((director) => (
-                    <Command.Item
-                      key={`featured-${director.id}`}
-                      value={`featured-${director.name}`}
-                      onSelect={() => handleSelectPerson(director)}
-                      className="flex items-center gap-3 p-2 rounded-[4px] cursor-pointer select-none transition-colors data-[selected=true]:bg-zinc-850 data-[selected=true]:text-white hover:bg-zinc-850/80 group"
-                    >
-                      <div className="w-8 h-10 rounded-[3px] overflow-hidden bg-zinc-850 flex-shrink-0 border border-zinc-800">
-                        <img
-                          src={getPosterUrl(director.profilePath, 'w185')}
-                          alt={director.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                        />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-white">{director.name}</span>
-                          <span className="text-[10px] uppercase font-semibold text-zinc-400 bg-zinc-900 border border-zinc-800 px-1.5 py-0.2 rounded-[2px]">
-                            {director.department}
-                          </span>
-                        </div>
-                        <p className="text-xs text-zinc-400 truncate mt-0.5">
-                          {director.knownFor}
-                        </p>
-                      </div>
-
-                      <ArrowRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white group-hover:translate-x-0.5 transition-transform" />
-                    </Command.Item>
-                  ))}
-                </Command.Group>
-
-                <Command.Group
-                  heading="Quick Navigation"
-                  className="px-1 py-1 text-[10px] font-bold text-zinc-500 uppercase tracking-wider mt-3"
-                >
-                  <Command.Item
-                    value="nav-top-letterboxd"
-                    onSelect={() => handleSelectNavigation('/top-rated?tab=letterboxd')}
-                    className="flex items-center gap-3 p-2 rounded-[4px] cursor-pointer select-none transition-colors data-[selected=true]:bg-zinc-850 data-[selected=true]:text-white hover:bg-zinc-850/80"
-                  >
-                    <div className="w-8 h-8 rounded-[3px] bg-emerald-950/60 border border-emerald-800/40 flex items-center justify-center text-emerald-400 flex-shrink-0">
-                      <Award className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-sm text-white">Letterboxd Top 500 Movies</p>
-                      <p className="text-xs text-zinc-400">All-time highest rated feature films</p>
-                    </div>
-                  </Command.Item>
-
-                  <Command.Item
-                    value="nav-top-imdb"
-                    onSelect={() => handleSelectNavigation('/top-rated?tab=imdb')}
-                    className="flex items-center gap-3 p-2 rounded-[4px] cursor-pointer select-none transition-colors data-[selected=true]:bg-zinc-850 data-[selected=true]:text-white hover:bg-zinc-850/80"
-                  >
-                    <div className="w-8 h-8 rounded-[3px] bg-amber-950/60 border border-amber-800/40 flex items-center justify-center text-amber-400 flex-shrink-0">
-                      <Star className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-sm text-white">IMDb Top 200 TV Series</p>
-                      <p className="text-xs text-zinc-400">Prestige television classics and series</p>
-                    </div>
-                  </Command.Item>
-
-                  <Command.Item
-                    value="nav-watchlist"
-                    onSelect={() => handleSelectNavigation('/my-list')}
-                    className="flex items-center gap-3 p-2 rounded-[4px] cursor-pointer select-none transition-colors data-[selected=true]:bg-zinc-850 data-[selected=true]:text-white hover:bg-zinc-850/80"
-                  >
-                    <div className="w-8 h-8 rounded-[3px] bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 flex-shrink-0">
-                      <Bookmark className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-sm text-white">My Watchlist</p>
-                      <p className="text-xs text-zinc-400">Saved titles and bookmarked watchlist</p>
-                    </div>
-                  </Command.Item>
-
-                  <Command.Item
-                    value="nav-history"
-                    onSelect={() => handleSelectNavigation('/profile')}
-                    className="flex items-center gap-3 p-2 rounded-[4px] cursor-pointer select-none transition-colors data-[selected=true]:bg-zinc-850 data-[selected=true]:text-white hover:bg-zinc-850/80"
-                  >
-                    <div className="w-8 h-8 rounded-[3px] bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 flex-shrink-0">
-                      <History className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-sm text-white">Watch History &amp; Ratings</p>
-                      <p className="text-xs text-zinc-400">Past playback sessions and Letterboxd synced logs</p>
-                    </div>
-                  </Command.Item>
-                </Command.Group>
-              </>
-            )}
-          </Command.List>
-
-          {/* Bottom Keyboard Hint Bar */}
-          <div className="flex items-center justify-between px-4 py-2 border-t border-zinc-850 bg-zinc-950/80 text-[11px] text-zinc-400">
-            <div className="flex items-center gap-3">
-              <span>
-                <kbd className="font-mono text-zinc-300 bg-zinc-900 border border-zinc-800 px-1 py-0.2 rounded-[2px]">↑↓</kbd> navigate
-              </span>
-              <span>
-                <kbd className="font-mono text-zinc-300 bg-zinc-900 border border-zinc-800 px-1 py-0.2 rounded-[2px]">↵</kbd> open
-              </span>
-              <span>
-                <kbd className="font-mono text-zinc-300 bg-zinc-900 border border-zinc-800 px-1 py-0.2 rounded-[2px]">esc</kbd> close
-              </span>
-            </div>
-            <span className="text-zinc-500 font-medium hidden sm:inline">
-              SEVEN Fast Search
-            </span>
-          </div>
-        </Command>
+          <kbd className="hidden sm:inline-flex items-center text-[10px] text-zinc-400 bg-zinc-900 border-0 px-1.5 py-0.5 rounded-none font-mono">
+            ESC
+          </kbd>
+        </div>
       </div>
-    </div>
+
+      {/* Category Filter Tabs */}
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-zinc-900 bg-black overflow-x-auto scrollbar-none">
+        <button
+          type="button"
+          onClick={() => setCategory('all')}
+          className={`px-2 py-0.5 rounded-none border-0 text-xs font-medium transition cursor-pointer ${
+            category === 'all'
+              ? 'bg-white text-black font-semibold'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+          }`}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          onClick={() => setCategory('people')}
+          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-none border-0 text-xs font-medium transition cursor-pointer ${
+            category === 'people'
+              ? 'bg-white text-black font-semibold'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+          }`}
+        >
+          <User className="w-3 h-3" />
+          <span>Directors &amp; Cast</span>
+          {query.trim() && peopleResults.length > 0 && (
+            <span className="text-[10px] opacity-75 font-mono">({peopleResults.length})</span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setCategory('movies')}
+          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-none border-0 text-xs font-medium transition cursor-pointer ${
+            category === 'movies'
+              ? 'bg-white text-black font-semibold'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+          }`}
+        >
+          <Film className="w-3 h-3" />
+          <span>Movies</span>
+          {query.trim() && (
+            <span className="text-[10px] opacity-75 font-mono">
+              ({mediaResults.filter((m) => m.media_type === 'movie').length})
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setCategory('tv')}
+          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-none border-0 text-xs font-medium transition cursor-pointer ${
+            category === 'tv'
+              ? 'bg-white text-black font-semibold'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+          }`}
+        >
+          <Tv className="w-3 h-3" />
+          <span>Series</span>
+          {query.trim() && (
+            <span className="text-[10px] opacity-75 font-mono">
+              ({mediaResults.filter((m) => m.media_type === 'tv').length})
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Main Results List */}
+      <CommandList>
+        {/* Empty State */}
+        {query.trim() && !loading && filteredPeople.length === 0 && filteredMedia.length === 0 && (
+          <CommandEmpty>
+            <p className="text-zinc-300 font-medium">No results found for &ldquo;{query}&rdquo;</p>
+            <p className="text-xs text-zinc-500 mt-1">
+              Check spelling or try searching for a director or actor name.
+            </p>
+          </CommandEmpty>
+        )}
+
+        {/* 1. PEOPLE (MAX 2 CLOSEST MATCHES IN ALL MODE) */}
+        {filteredPeople.length > 0 && (
+          <CommandGroup heading="People">
+            {filteredPeople.slice(0, category === 'people' ? 8 : 2).map((person) => {
+              const knownWorks = (person.known_for || []).slice(0, 3);
+
+              return (
+                <CommandItem
+                  key={`person-${person.id}`}
+                  value={`person-${person.name}-${person.id}`}
+                  onSelect={() => handleSelectPerson(person)}
+                  className="flex flex-col items-start gap-1.5 p-2 rounded-none border-0 bg-black hover:bg-zinc-900/60 transition"
+                >
+                  <div className="flex items-center gap-2.5 w-full">
+                    <ResilientAvatar
+                      src={person.profile_path ? getPosterUrl(person.profile_path, 'w185') : null}
+                      alt={person.name}
+                      name={person.name}
+                      className="w-7 h-7 rounded-none"
+                    />
+                    <span className="font-semibold text-sm text-white">{person.name}</span>
+                    <span className="text-[10px] uppercase font-semibold text-zinc-400 bg-zinc-900 border-0 px-1.5 py-0.5 rounded-none">
+                      {person.known_for_department || 'Creator'}
+                    </span>
+                    <CommandShortcut>Profile ↵</CommandShortcut>
+                  </div>
+
+                  {/* Known Works in Design System Compact Cards */}
+                  {knownWorks.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full pt-1">
+                      {knownWorks.map((work) => (
+                        <CompactMediaCard
+                          key={`work-${person.id}-${work.id}`}
+                          item={work}
+                          subtitle={work.media_type === 'tv' ? 'Series' : 'Featured'}
+                          size="sm"
+                          onClick={handleSelectMedia}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </CommandItem>
+              );
+            })}
+          </CommandGroup>
+        )}
+
+        {filteredPeople.length > 0 && filteredMedia.length > 0 && <CommandSeparator />}
+
+        {/* 2. MOVIES & SERIES */}
+        {filteredMedia.length > 0 && (
+          <CommandGroup heading="Titles">
+            {filteredMedia.slice(0, 15).map((item) => {
+              const year = item.release_date ? item.release_date.slice(0, 4) : '';
+
+              return (
+                <CommandItem
+                  key={`media-${item.id}`}
+                  value={`media-${item.title}-${item.id}`}
+                  onSelect={() => handleSelectMedia(item)}
+                  className="flex items-center gap-3 py-2 px-2.5 rounded-none border-0"
+                >
+                  {/* Poster Thumbnail */}
+                  <div className="w-6 h-8 rounded-none bg-black border-0 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    {item.poster_path ? (
+                      <img
+                        src={getPosterUrl(item.poster_path, 'w92')}
+                        alt={item.title}
+                        className="w-full h-full object-cover rounded-none"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <Film className="w-3.5 h-3.5 text-zinc-600" />
+                    )}
+                  </div>
+
+                  {/* Title & Metadata */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm text-white truncate">{item.title}</span>
+                      {year && <span className="text-xs text-zinc-400 font-mono">{year}</span>}
+                      <span className="text-[9px] uppercase font-mono text-zinc-500 ml-auto flex-shrink-0">
+                        {item.media_type === 'tv' ? 'TV' : 'Movie'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {item.vote_average > 0 && (
+                    <span className="text-xs text-amber-400 font-medium font-mono flex items-center gap-0.5 flex-shrink-0">
+                      ★ {item.vote_average.toFixed(1)}
+                    </span>
+                  )}
+                </CommandItem>
+              );
+            })}
+          </CommandGroup>
+        )}
+
+        {/* 3. INITIAL EMPTY STATE: SPOTLIGHT CREATORS & QUICK LINKS */}
+        {!query.trim() && (
+          <>
+            <CommandGroup
+              heading={
+                isSpotlightPersonalized
+                  ? 'Spotlight: Creators You Like'
+                  : 'Spotlight Creators'
+              }
+            >
+              {spotlightCreators.map((director) => (
+                <CommandItem
+                  key={`spotlight-${director.id}-${director.name}`}
+                  value={`spotlight-${director.name}`}
+                  onSelect={() => handleSelectPerson(director)}
+                  className="flex flex-col items-start gap-1.5 p-2 rounded-none border-0 bg-black hover:bg-zinc-900/60 transition"
+                >
+                  <div className="flex items-center gap-2.5 w-full">
+                    <ResilientAvatar
+                      src={director.profilePath ? getPosterUrl(director.profilePath, 'w185') : null}
+                      alt={director.name}
+                      name={director.name}
+                      className="w-7 h-7 rounded-none"
+                    />
+                    <span className="font-semibold text-sm text-white">{director.name}</span>
+                    <span className="text-[10px] uppercase font-semibold text-zinc-400 bg-zinc-900 border-0 px-1.5 py-0.5 rounded-none">
+                      {director.department}
+                    </span>
+                    {Boolean(director.userLikedCount && director.userLikedCount > 0) && (
+                      <span className="text-[10px] text-zinc-500 font-mono">
+                        ({director.userLikedCount} liked {director.userLikedCount === 1 ? 'title' : 'titles'})
+                      </span>
+                    )}
+                    <CommandShortcut>Filmography ↵</CommandShortcut>
+                  </div>
+
+                  {/* Signature Works in Design System Compact Cards */}
+                  {director.signatureWorks && director.signatureWorks.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full pt-1">
+                      {director.signatureWorks.map((work) => (
+                        <CompactMediaCard
+                          key={`spotlight-work-${director.id}-${work.id}`}
+                          item={{
+                            id: work.id,
+                            title: work.title,
+                            media_type: work.mediaType,
+                            vote_average: work.rating,
+                            release_date: work.year,
+                            poster_path: work.posterPath || null,
+                          } as MediaItem}
+                          subtitle={work.mediaType === 'tv' ? 'Series' : 'Featured'}
+                          size="sm"
+                          onClick={handleSelectMedia}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+
+            <CommandSeparator />
+
+            <CommandGroup heading="Quick Links">
+              <CommandItem
+                value="nav-letterboxd-top-500"
+                onSelect={() => handleSelectNavigation('/top-rated?tab=letterboxd')}
+                className="py-2 px-2.5 rounded-none border-0"
+              >
+                <div className="w-5 h-5 rounded-none bg-emerald-950/60 border-0 flex items-center justify-center text-emerald-400 mr-1.5">
+                  <Award className="w-3.5 h-3.5" />
+                </div>
+                <span className="font-medium text-sm text-white">Letterboxd Top 500 Movies</span>
+                <span className="text-xs text-zinc-500 hidden sm:inline ml-2">All-time highest rated feature films</span>
+                <CommandShortcut>Top Rated</CommandShortcut>
+              </CommandItem>
+
+              <CommandItem
+                value="nav-imdb-top-200"
+                onSelect={() => handleSelectNavigation('/top-rated?tab=imdb')}
+                className="py-2 px-2.5 rounded-none border-0"
+              >
+                <div className="w-5 h-5 rounded-none bg-amber-950/60 border-0 flex items-center justify-center text-amber-400 mr-1.5">
+                  <Star className="w-3.5 h-3.5" />
+                </div>
+                <span className="font-medium text-sm text-white">IMDb Top 200 TV Series</span>
+                <span className="text-xs text-zinc-500 hidden sm:inline ml-2">Prestige television classics</span>
+                <CommandShortcut>Series</CommandShortcut>
+              </CommandItem>
+
+              <CommandItem
+                value="nav-watchlist"
+                onSelect={() => handleSelectNavigation('/my-list')}
+                className="py-2 px-2.5 rounded-none border-0"
+              >
+                <div className="w-5 h-5 rounded-none bg-zinc-900 border-0 flex items-center justify-center text-zinc-300 mr-1.5">
+                  <Bookmark className="w-3.5 h-3.5" />
+                </div>
+                <span className="font-medium text-sm text-white">My Watchlist</span>
+                <span className="text-xs text-zinc-500 hidden sm:inline ml-2">Saved titles &amp; bookmarks</span>
+                <CommandShortcut>List</CommandShortcut>
+              </CommandItem>
+
+              <CommandItem
+                value="nav-history"
+                onSelect={() => handleSelectNavigation('/profile')}
+                className="py-2 px-2.5 rounded-none border-0"
+              >
+                <div className="w-5 h-5 rounded-none bg-zinc-900 border-0 flex items-center justify-center text-zinc-300 mr-1.5">
+                  <History className="w-3.5 h-3.5" />
+                </div>
+                <span className="font-medium text-sm text-white">Watch History &amp; Ratings</span>
+                <span className="text-xs text-zinc-500 hidden sm:inline ml-2">Letterboxd synced logs</span>
+                <CommandShortcut>Profile</CommandShortcut>
+              </CommandItem>
+            </CommandGroup>
+          </>
+        )}
+      </CommandList>
+
+      {/* Bottom Hint Bar */}
+      <div className="flex items-center justify-between px-3 py-2 border-t border-zinc-900 bg-black text-[11px] text-zinc-500 font-sans">
+        <div className="flex items-center gap-3">
+          <span>
+            <kbd className="font-mono text-zinc-300 bg-zinc-900 border-0 px-1.5 py-0.5 rounded-none text-[10px]">↑↓</kbd> navigate
+          </span>
+          <span>
+            <kbd className="font-mono text-zinc-300 bg-zinc-900 border-0 px-1.5 py-0.5 rounded-none text-[10px]">↵</kbd> select
+          </span>
+          <span>
+            <kbd className="font-mono text-zinc-300 bg-zinc-900 border-0 px-1.5 py-0.5 rounded-none text-[10px]">esc</kbd> close
+          </span>
+        </div>
+        <span className="text-zinc-500 font-mono text-[10px]">
+          SEVEN
+        </span>
+      </div>
+    </CommandDialog>
   );
 };

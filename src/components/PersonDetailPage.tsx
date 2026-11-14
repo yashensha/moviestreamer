@@ -6,10 +6,12 @@ import {
   fetchPersonFullCredits,
   getPosterUrl,
   getBackdropUrl,
+  formatMergedRoles,
 } from '../services/tmdb';
 import { NetflixNavbar } from './NetflixNavbar';
 import { VideoPlayerModal } from './VideoPlayerModal';
 import { NetflixTallCard } from './NetflixTallCard';
+import { CompactMediaCard } from './CompactMediaCard';
 import {
   ArrowLeft,
   Film,
@@ -87,18 +89,19 @@ export const PersonDetailPage: React.FC = () => {
     } else if (activeTab === 'crew') {
       list = [...crewCredits];
     } else {
-      // 'all' tab: merge cast and crew while preserving role tags
+      // 'all' tab: merge cast and crew while preserving and combining all role descriptions
       const map = new Map<number, PersonCreditItem>();
-      castCredits.forEach((c) => map.set(c.id, c));
+      castCredits.forEach((c) => map.set(c.id, { ...c }));
       crewCredits.forEach((c) => {
         if (!map.has(c.id)) {
-          map.set(c.id, c);
+          map.set(c.id, { ...c });
         } else {
-          // If in both (e.g. Director and Actor), combine role descriptions
+          // If in both (e.g. Director and Actor), combine all roles
           const existing = map.get(c.id)!;
-          if (c.job && existing.character) {
-            existing.job = `${c.job} & Actor`;
-          }
+          const actingRole = existing.character ? `as ${existing.character}` : 'Actor';
+          const crewRoles = c.job ? c.job.split(',').map((s) => s.trim()) : [];
+          existing.job = formatMergedRoles([...crewRoles, actingRole]);
+          existing.character = undefined;
         }
       });
       list = Array.from(map.values());
@@ -122,18 +125,25 @@ export const PersonDetailPage: React.FC = () => {
     });
   }, [castCredits, crewCredits, activeTab, mediaFilter, sortBy]);
 
-  // Top career highlights (Top 4 most celebrated works)
+  // Top career highlights (Top 4 most celebrated works, strictly deduplicated by movie ID)
   const careerHighlights = useMemo(() => {
-    const combined = [...castCredits, ...crewCredits];
-    const seen = new Set<number>();
-    const top: PersonCreditItem[] = [];
-    for (const item of combined) {
-      if (seen.has(item.id)) continue;
-      seen.add(item.id);
-      top.push(item);
-      if (top.length >= 4) break;
-    }
-    return top;
+    const map = new Map<number, PersonCreditItem>();
+    castCredits.forEach((c) => map.set(c.id, { ...c }));
+    crewCredits.forEach((c) => {
+      if (!map.has(c.id)) {
+        map.set(c.id, { ...c });
+      } else {
+        const existing = map.get(c.id)!;
+        const actingRole = existing.character ? `as ${existing.character}` : 'Actor';
+        const crewRoles = c.job ? c.job.split(',').map((s) => s.trim()) : [];
+        existing.job = formatMergedRoles([...crewRoles, actingRole]);
+        existing.character = undefined;
+      }
+    });
+
+    const uniqueItems = Array.from(map.values());
+    uniqueItems.sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
+    return uniqueItems.slice(0, 4);
   }, [castCredits, crewCredits]);
 
   // Top backdrop image for atmospheric hero glow
@@ -214,7 +224,7 @@ export const PersonDetailPage: React.FC = () => {
             </div>
 
             {/* Hero Main Content Container */}
-            <div className="relative z-10 w-full max-w-7xl mx-auto px-4 md:px-12 pt-28 pb-8 flex flex-col md:flex-row gap-6 md:gap-10 items-start md:items-end">
+            <div className="relative z-10 w-full  px-4 md:px-12 pt-28 pb-8 flex flex-col md:flex-row gap-6 md:gap-10 items-start md:items-end">
               {/* Person Portrait Poster */}
               <div className="flex-shrink-0 w-36 sm:w-44 md:w-56 aspect-[3/4] rounded-[4px] overflow-hidden bg-zinc-900 border border-zinc-800 shadow-2xl shadow-black group">
                 <img
@@ -285,7 +295,7 @@ export const PersonDetailPage: React.FC = () => {
           {/* 2. KNOWN FOR SHELF                                       */}
           {/* ======================================================== */}
           {careerHighlights.length > 0 && (
-            <div className="w-full max-w-7xl mx-auto px-4 md:px-12 pt-8 pb-4">
+            <div className="w-full px-4 md:px-12 pt-8 pb-4">
               <h2 className="text-xs uppercase font-bold tracking-wider text-zinc-400 mb-3">
                 Known For
               </h2>
@@ -293,58 +303,21 @@ export const PersonDetailPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {careerHighlights.map((item) => {
                   const roleText =
-                    item.character
+                    item.job ||
+                    (item.character
                       ? `as ${item.character}`
-                      : item.job
-                      ? item.job
                       : item.media_type === 'tv'
                       ? 'Series Regular'
-                      : 'Lead Cast';
-
-                  const year = item.release_date ? item.release_date.slice(0, 4) : '';
+                      : 'Lead Cast');
 
                   return (
-                    <div
+                    <CompactMediaCard
                       key={`highlight-${item.id}`}
-                      onClick={() => handleOpenItem(item)}
-                      className="group/card relative bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 rounded-[4px] overflow-hidden p-3 transition-all duration-200 hover:-translate-y-0.5 cursor-pointer shadow-lg hover:shadow-black"
-                    >
-                      <div className="flex gap-3 items-center">
-                        {/* Thumbnail Artwork */}
-                        <div className="relative w-14 h-20 rounded-[4px] overflow-hidden bg-zinc-800 flex-shrink-0 shadow">
-                          <img
-                            src={getPosterUrl(item.poster_path || item.backdrop_path, 'w185')}
-                            alt={item.title}
-                            className="w-full h-full object-cover group-hover/card:scale-105 transition-transform"
-                            loading="lazy"
-                          />
-                        </div>
-
-                        {/* Title, Year & Specific Role */}
-                        <div className="min-w-0 flex-1 space-y-0.5">
-                          <div className="flex items-center gap-1.5 text-[10px] text-zinc-500">
-                            {year && <span>{year}</span>}
-                            {item.vote_average > 0 && (
-                              <>
-                                <span>•</span>
-                                <span className="text-emerald-400 font-bold">
-                                  ★ {item.vote_average.toFixed(1)}
-                                </span>
-                              </>
-                            )}
-                          </div>
-
-                          <h3 className="text-sm font-bold text-white group-hover/card:text-zinc-200 transition truncate">
-                            {item.title}
-                          </h3>
-
-                          {/* Anti-slop Role Typography: pure text, zero border/pill */}
-                          <p className="text-xs text-zinc-400 font-normal truncate" title={roleText}>
-                            {roleText}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                      item={item}
+                      role={roleText}
+                      size="md"
+                      onClick={handleOpenItem}
+                    />
                   );
                 })}
               </div>
@@ -354,9 +327,9 @@ export const PersonDetailPage: React.FC = () => {
           {/* ======================================================== */}
           {/* 3. COMPLETE FILMOGRAPHY & EXPLORER WITH ROLE CARDS       */}
           {/* ======================================================== */}
-          <div className="w-full max-w-7xl mx-auto px-4 md:px-12 pt-8 space-y-6">
+          <div className="w-full px-4 md:px-12 pt-8 space-y-6">
             {/* Filter and Tab Header Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-850 pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4">
               {/* Department Tabs: All / Acting / Directing & Crew */}
               <div className="flex items-center gap-2">
                 <button
@@ -458,13 +431,17 @@ export const PersonDetailPage: React.FC = () => {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
                 {displayedCredits.map((item) => {
-                  const roleText = item.character
-                    ? `as ${item.character}`
-                    : item.job || (item.media_type === 'tv' ? 'Series' : 'Featured');
+                  const roleText =
+                    item.job ||
+                    (item.character
+                      ? `as ${item.character}`
+                      : item.media_type === 'tv'
+                      ? 'Series'
+                      : 'Featured');
 
                   return (
                     <NetflixTallCard
-                      key={`credit-${item.id}-${item.credit_id || item.character || item.job}`}
+                      key={`credit-${item.id}`}
                       item={item}
                       role={roleText}
                       imageType="poster"

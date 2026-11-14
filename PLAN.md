@@ -1,47 +1,35 @@
-# Implementation Plan: Session-Seeded Graph Recommender
+# Implementation Plan: Movie Card Design System Alignment
 
 ## Objective
-Rebuild the core recommendation engine based on sequential media consumption research (Consensus synthesis):
-1. Two-Speed Architecture (Long-term profile bent by dynamic session momentum).
-2. 2-Hop Entity Graph Traversal (Director/Auteur, Lead Cast, Microgenres, Letterboxd themes/tropes).
-3. Netflix-style partitioned rows with explainable attribution badges.
+Unify the movie card visual language across the application by canonicalizing the horizontal compact card design (from `PersonDetailPage`'s "Known For" shelf) into a reusable `CompactMediaCard` component, and integrating it into `CommandMenu` and other surfaces to enforce consistent styling.
 
 ---
 
 ## Execution Protocol
 - **Single Active Task**: Execute ONLY the active marked task `[ ] -> [x]`.
 - **Stop and Check-In**: Halt after every task, present verification proof (3 sentences), and wait for user confirmation.
-- **Verification Gate**: Every task must pass `npx tsc --noEmit` and `npx oxlint`.
+- **Verification Gate**: Every task must pass `npx tsc --noEmit`.
 
 ---
 
 ## Tasks
 
-- [x] **Task 1: Session State Tracker (`src/services/tasteEngine/sessionState.ts` & store integration)**
-  - Implement $N = 3$ sliding window with exponential decay ($w = [1.0, 0.5, 0.25]$).
-  - Implement 4-hour inactivity timeout and session reset logic.
-  - Wire watch completion, high ratings, and dwell signals from `useStreamStore`.
-  - *Verification*: Unit verification of decay weights, timeout eviction, and `tsc --noEmit`.
+- [x] **Task 1: Canonical `CompactMediaCard` Component (`src/components/CompactMediaCard.tsx`)**
+  - Extract the horizontal card design from `PersonDetailPage.tsx` into a reusable component.
+  - Implement size variants: `size="md"` (standard 14x20 thumbnail) and `size="sm"` (compact 10x14 thumbnail for CMD-K).
+  - Add resilient image loading with error fallback and emerald rating badge formatting (`★ 8.4`).
+  - *Verification*: `npx tsc --noEmit`.
 
-- [x] **Task 2: 2-Hop Entity Graph Traversal (`src/services/tasteEngine/graphTraversal.ts`)**
-  - Implement Hop 1: Director filmography, Lead Cast hits, and direct trope matches from active seed.
-  - Implement Hop 2: Collaborator adjacency and neighboring trope clusters.
-  - Integrate hard filtering to strictly eliminate watched, disliked, and $\le 2.5\star$ items.
-  - *Verification*: Verification of candidate generation output, deduplication, and `tsc --noEmit`.
+- [x] **Task 2: Refactor `PersonDetailPage.tsx` to use `CompactMediaCard`**
+  - Replace hardcoded card implementation in `careerHighlights` ("Known For") with `CompactMediaCard`.
+  - Maintain character role resolution logic (`as {character}` or job title).
+  - *Verification*: `npx tsc --noEmit` and visual consistency check.
 
-- [x] **Task 3: Two-Speed Gated Fusion Matcher (`src/services/tasteEngine/twoSpeedMatcher.ts`)**
-  - Implement dynamic $\alpha(\Delta t) = 0.20 + 0.55 \cdot e^{-\Delta t / 2\text{h}}$ fusion formula.
-  - Combine session vector similarity with long-term taste profile.
-  - Produce calibrated 75%–99% match percentages with explicit human-readable match attributions.
-  - *Verification*: Benchmark scoring across sample items and `tsc --noEmit`.
+- [x] **Task 3: Integrate `CompactMediaCard` into `CommandMenu.tsx`**
+  - Replace disparate inline movie pills in the celebrity items with `<CompactMediaCard size="sm" />`.
+  - Update both live celebrity search results and spotlight creators to use the unified card design.
+  - *Verification*: `npx tsc --noEmit` and keyboard/click navigation check.
 
-- [x] **Task 4: High-Performance Recommendation Pipeline (`src/services/tasteEngine/pipeline.ts`)**
-  - Re-architect `runTasteRecommendationPipeline` to ingest session state and execute 2-hop traversal.
-  - Partition candidates into distinct rows: *"Because You Watched [Seed Title]"*, *"Top Picks for You"*, *"Thematic Dive"*, and *"Comfort Classics"*.
-  - Export unified types and hooks in `src/services/tasteEngine/index.ts`.
-  - *Verification*: Type check and verification in `TailoredRecommendationsRow.tsx`.
-
-- [x] **Task 5: UI Attribution & End-to-End Verification**
-  - Update `TailoredRecommendationsRow.tsx` and media cards to display the explainable attribution badges (e.g. *"Directed by [Director]"*, *"Shared Trope"*).
-  - Run full test suite: `npx tsc --noEmit` and `npx oxlint`.
-  - Final human review.
+- [x] **Task 4: Card Design Token Audit Across `MediaCard`, `NetflixTallCard`, & `NetflixBackdropCard`**
+  - Verify and align all card primitives to the design system: `rounded-[4px]`, `border-zinc-800`, `text-emerald-400` rating badges, and zero CLS.
+  - *Verification*: `npx tsc --noEmit` and `npx oxlint`.

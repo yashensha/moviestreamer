@@ -12,7 +12,43 @@ import {
 } from '../services/tmdb';
 import { useStreamStore } from '../store/useStreamStore';
 import { calculateUnifiedMatchScore, useUserTasteProfile } from '../services/tasteEngine';
-import { Play, Plus, Check, ThumbsUp, ThumbsDown, Trash2, Eye } from 'lucide-react';
+import { Play, Plus, Check, ThumbsUp, ThumbsDown, Trash2, Eye, Sparkles, Clapperboard, Compass, Users } from 'lucide-react';
+
+function formatMatchReason(rawReason: string): {
+  label: string;
+  iconType: 'director' | 'cast' | 'seed' | 'theme' | 'curated';
+} {
+  const trimmed = rawReason.trim();
+  const lower = trimmed.toLowerCase();
+
+  if (lower.startsWith('shared theme:')) {
+    const content = trimmed.slice(13).trim().replace(/\bAnd\b/g, '&');
+    return { label: content, iconType: 'theme' };
+  }
+  if (lower.startsWith('theme:')) {
+    const content = trimmed.slice(6).trim().replace(/\bAnd\b/g, '&');
+    return { label: content, iconType: 'theme' };
+  }
+  if (lower.startsWith('subgenre:')) {
+    const content = trimmed.slice(9).trim();
+    return { label: content, iconType: 'theme' };
+  }
+  if (lower.startsWith('directed by')) {
+    return { label: trimmed, iconType: 'director' };
+  }
+  if (lower.startsWith('starring')) {
+    return { label: trimmed, iconType: 'cast' };
+  }
+  if (lower.startsWith('because you watched')) {
+    return { label: trimmed, iconType: 'seed' };
+  }
+  if (lower.startsWith('curated for your love of')) {
+    const content = trimmed.slice(24).trim();
+    return { label: `For fans of ${content}`, iconType: 'curated' };
+  }
+
+  return { label: trimmed, iconType: 'curated' };
+}
 
 export interface NetflixTallCardProps {
   item: MediaItem;
@@ -415,7 +451,7 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
 
           {/* Role subtitle in hover drawer */}
           {role && (
-            <p className="text-[11px] text-zinc-300 font-medium line-clamp-1 drop-shadow-sm mb-1">
+            <p className="text-[11px] text-zinc-300 font-medium line-clamp-2 drop-shadow-sm mb-1" title={role}>
               {role}
             </p>
           )}
@@ -436,13 +472,27 @@ export const NetflixTallCard: React.FC<NetflixTallCardProps> = ({
             )}
           </div>
 
-          {/* Explainable Attribution Reason */}
-          {item.matchReason && (
-            <div className="text-[10px] text-cyan-400 font-medium truncate mt-1 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 inline-block shrink-0" />
-              <span className="truncate">{item.matchReason}</span>
-            </div>
-          )}
+          {/* Explainable Attribution Reason Pill */}
+          {item.matchReason && (() => {
+            const { label, iconType } = formatMatchReason(item.matchReason);
+            return (
+              <div
+                className="inline-flex items-center gap-1.5 max-w-full  py-0.5 mt-1.5 text-[10px] font-medium text-zinc-200 shadow-sm overflow-hidden select-none"
+                title={item.matchReason}
+              >
+                {iconType === 'director' ? (
+                  <Clapperboard className="w-2.5 h-2.5 text-zinc-400 shrink-0" />
+                ) : iconType === 'seed' ? (
+                  <Compass className="w-2.5 h-2.5 text-zinc-400 shrink-0" />
+                ) : iconType === 'cast' ? (
+                  <Users className="w-2.5 h-2.5 text-zinc-400 shrink-0" />
+                ) : (
+                  <Sparkles className="w-2.5 h-2.5 text-amber-400/90 shrink-0" />
+                )}
+                <span className="truncate tracking-tight">{label}</span>
+              </div>
+            );
+          })()}
 
           {/* Clean Dot-separated Primary Genre Tags */}
           {tags.length > 0 && (
